@@ -1,0 +1,39 @@
+{
+  "name": "medical-erp-backend-express",
+  "version": "1.0.0",
+  "description": "Enterprise-Grade Modular Monolith Medical ERP Backend (Express + JS)",
+  "type": "module",
+  "main": "apps/api.js",
+  "scripts": {
+    "dev": "nodemon apps/api.js",
+    "start:api": "node apps/api.js",
+    "start:api:dev": "nodemon apps/api.js",
+    "start:worker": "node apps/worker.js",
+    "start:scheduler": "node apps/scheduler.js",
+    "start:websocket": "node apps/websocket.js",
+    "prisma:generate": "prisma generate --schema ./prisma/schema",
+    "prisma:migrate": "prisma migrate dev --schema ./prisma/schema",
+    "prisma:studio": "prisma studio --schema ./prisma/schema",
+    "prisma:seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.14.0",
+    "bcryptjs": "^2.4.3",
+    "bullmq": "^5.8.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2",
+    "node-cron": "^3.0.3",
+    "socket.io": "^4.7.5",
+    "swagger-ui-express": "^5.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0",
+    "prisma": "^5.14.0"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  }
+}

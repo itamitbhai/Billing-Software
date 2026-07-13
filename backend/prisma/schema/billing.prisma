@@ -1,0 +1,95 @@
+// ============================================
+// billing.prisma - Transactions and Payments
+// ============================================
+
+model Purchase {
+  id           String   @id @default(uuid())
+  supplierId   String
+  supplier     Party    @relation(fields: [supplierId], references: [id])
+
+  billNumber   String            // supplier's own bill/invoice number
+  purchaseDate DateTime
+  totalAmount  Decimal  @db.Decimal(12, 2)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  items        PurchaseItem[]
+
+  @@index([supplierId])
+  @@index([purchaseDate])
+}
+
+model PurchaseItem {
+  id          String   @id @default(uuid())
+  purchaseId  String
+  purchase    Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  batchId     String
+  batch       Batch    @relation(fields: [batchId], references: [id])
+
+  qty         Int
+  rate        Decimal  @db.Decimal(12, 2)
+  gstAmount   Decimal  @db.Decimal(12, 2) @default(0)
+  amount      Decimal  @db.Decimal(12, 2)   // qty * rate + gst
+}
+
+model Sale {
+  id             String        @id @default(uuid())
+  customerId     String
+  customer       Party         @relation(fields: [customerId], references: [id])
+
+  invoiceNumber  String        @unique
+  saleDate       DateTime
+  totalAmount    Decimal       @db.Decimal(12, 2)
+  status         InvoiceStatus @default(UNPAID)
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  items          SaleItem[]
+  payments       Payment[]
+
+  @@index([customerId])
+  @@index([saleDate])
+  @@index([status])
+}
+
+model SaleItem {
+  id        String   @id @default(uuid())
+  saleId    String
+  sale      Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  batchId   String
+  batch     Batch    @relation(fields: [batchId], references: [id])
+
+  qty       Int
+  rate      Decimal  @db.Decimal(12, 2)
+  gstAmount Decimal  @db.Decimal(12, 2) @default(0)
+  amount    Decimal  @db.Decimal(12, 2)   // qty * rate + gst
+}
+
+model Payment {
+  id              String        @id @default(uuid())
+
+  partyId         String
+  party           Party         @relation(fields: [partyId], references: [id])
+
+  saleId          String?                // nullable - advance payments have no invoice yet
+  sale            Sale?         @relation(fields: [saleId], references: [id])
+
+  amount          Decimal       @db.Decimal(12, 2)
+  method          PaymentMethod
+  referenceNumber String?                // UPI txn id / cheque no / bank ref
+  paymentDate     DateTime
+  notes           String?
+
+  recordedById    String?
+  recordedBy      User?         @relation("RecordedBy", fields: [recordedById], references: [id])
+
+  createdAt       DateTime      @default(now())
+
+  @@index([partyId])
+  @@index([saleId])
+  @@index([paymentDate])
+}

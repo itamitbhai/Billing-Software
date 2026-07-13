@@ -1,0 +1,32 @@
+// ============================================
+// auth.prisma - Auth & Company Settings
+// ============================================
+
+model CompanySettings {
+  id            String   @id @default(uuid())
+  companyName   String
+  gstin         String
+  state         String
+  address       String?
+  phone         String?
+  email         String?
+  bankName      String?
+  accountNo     String?
+  ifscCode      String?
+  invoicePrefix String   @default("INV")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(STAFF)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  payments     Payment[] @relation("RecordedBy")
+}

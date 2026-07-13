@@ -1,0 +1,54 @@
+// ============================================
+// enums.prisma - Enums for B2B Medical Billing
+// ============================================
+
+enum Role {
+  ADMIN
+  ACCOUNTANT
+  STAFF
+}
+
+enum PartyType {
+  SUPPLIER
+  CUSTOMER
+  BOTH
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  BANK_TRANSFER
+  CHEQUE
+  RAZORPAY
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+}
+
+enum LedgerNature {
+  ASSET
+  LIABILITY
+  INCOME
+  EXPENSE
+  EQUITY
+}
+
+enum EntryType {
+  DEBIT
+  CREDIT
+}
+
+enum VoucherType {
+  SALES
+  PURCHASE
+  RECEIPT
+  PAYMENT
+  CONTRA
+  JOURNAL
+  CREDIT_NOTE
+  DEBIT_NOTE
+}

@@ -1,0 +1,30 @@
+// ============================================
+// accounts.prisma - Chart of Accounts
+// ============================================
+
+model LedgerGroup {
+  id        String       @id @default(uuid())
+  name      String       @unique
+  nature    LedgerNature
+  parentId  String?
+  parent    LedgerGroup? @relation("GroupHierarchy", fields: [parentId], references: [id])
+  children  LedgerGroup[] @relation("GroupHierarchy")
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  ledgers   Ledger[]
+}
+
+model Ledger {
+  id                 String      @id @default(uuid())
+  name               String      @unique
+  groupId            String
+  group              LedgerGroup @relation(fields: [groupId], references: [id])
+  openingBalance     Decimal     @db.Decimal(12, 2) @default(0)
+  openingBalanceType EntryType   @default(DEBIT)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  party              Party?
+  voucherLines       VoucherLine[]
+}

@@ -1,0 +1,81 @@
+// ============================================
+// masters.prisma - Master data (Party, Product, Batch)
+// ============================================
+
+model Party {
+  id               String    @id @default(uuid())
+
+  // --- Auto-fetched from existing VS Arogya app ---
+  externalId       String?   @unique   // ID in the existing app, used to match on re-sync
+  name             String
+  gstin            String?
+  phone            String?
+  email            String?
+  address          String?
+  state            String?
+
+  // --- Manual fields (billing-specific, not in existing app) ---
+  type             PartyType @default(CUSTOMER)
+  creditLimit      Decimal?  @db.Decimal(12, 2)
+  creditPeriodDays Int?      @default(30)
+  openingBalance   Decimal?  @db.Decimal(12, 2) @default(0)
+
+  // Backing Ledger Link
+  ledgerId         String    @unique
+  ledger           Ledger    @relation(fields: [ledgerId], references: [id])
+
+  lastSyncedAt     DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  purchases        Purchase[]
+  sales            Sale[]
+  payments         Payment[]
+
+  @@index([gstin])
+  @@index([name])
+}
+
+model Product {
+  id            String   @id @default(uuid())
+
+  // --- Auto-fetched from existing VS Arogya app ---
+  externalId    String?  @unique
+  name          String
+  type          String?           // e.g. Tablet, Syrup, Injection
+  price         Decimal  @db.Decimal(12, 2)
+  unit          String?  @default("PCS")
+
+  // --- Manual fields (billing-specific) ---
+  hsnCode       String?
+  gstRate       Decimal  @db.Decimal(5, 2) @default(0)   // e.g. 12.00 for 12%
+  reorderLevel  Int?     @default(0)
+
+  lastSyncedAt  DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  batches       Batch[]
+
+  @@index([name])
+}
+
+model Batch {
+  id            String   @id @default(uuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id])
+
+  batchNumber   String
+  expiryDate    DateTime
+  mrp           Decimal  @db.Decimal(12, 2)
+  currentQty    Int      @default(0)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  purchaseItems PurchaseItem[]
+  saleItems     SaleItem[]
+
+  @@unique([productId, batchNumber])
+  @@index([expiryDate])
+}
