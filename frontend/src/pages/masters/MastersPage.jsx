@@ -11,7 +11,9 @@ export default function MastersPage() {
 
   // Modal States
   const [partyModal, setPartyModal] = useState(false);
-  const [partyForm, setPartyForm] = useState({ name: '', type: 'CUSTOMER', gstin: '', phone: '', email: '', address: '', creditLimit: '0', creditDays: 0 });
+  const [partyForm, setPartyForm] = useState({ name: '', type: 'CUSTOMER', gstin: '', phone: '', email: '', address: '', state: '', creditLimit: '0', creditDays: 0 });
+  const [selectedParty, setSelectedParty] = useState(null);
+  const [selectedItem, setSelectedItem] = useState(null);
 
   const [itemModal, setItemModal] = useState(false);
   const [itemForm, setItemForm] = useState({ name: '', stockGroupId: '', unitId: '', taxRateId: '', openingQuantity: '0', openingRate: '0', hsn: '' });
@@ -42,7 +44,7 @@ export default function MastersPage() {
       queryClient.invalidateQueries({ queryKey: ['parties'] });
       toast.success('Party and backing ledger created');
       setPartyModal(false);
-      setPartyForm({ name: '', type: 'CUSTOMER', gstin: '', phone: '', email: '', address: '', creditLimit: '0', creditDays: 0 });
+      setPartyForm({ name: '', type: 'CUSTOMER', gstin: '', phone: '', email: '', address: '', state: '', creditLimit: '0', creditDays: 0 });
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Error creating party')
   });
@@ -191,7 +193,13 @@ export default function MastersPage() {
                 <div className="divide-y divide-gray-800/40">
                   {parties.map(p => (
                     <div key={p.id} className="grid grid-cols-5 py-3 items-center text-sm">
-                      <div className="font-semibold text-white">{p.name}</div>
+                      <button
+                        onClick={() => setSelectedParty(p)}
+                        type="button"
+                        className="font-semibold text-left text-white hover:text-amber-500 hover:underline transition cursor-pointer"
+                      >
+                        {p.name}
+                      </button>
                       <div>
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                           p.type === 'CUSTOMER' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
@@ -219,17 +227,23 @@ export default function MastersPage() {
                 <div className="grid grid-cols-5 text-xs font-bold text-gray-400 uppercase border-b border-gray-800 pb-3">
                   <div>Item Name</div>
                   <div>Unit</div>
-                  <div className="text-right">Opening Qty</div>
-                  <div className="text-right">Rate</div>
+                  <div className="text-right">Total Available Stock</div>
+                  <div className="text-right">Retail Price</div>
                   <div className="text-right">Action</div>
                 </div>
                 <div className="divide-y divide-gray-800/40">
                   {items.map(item => (
                     <div key={item.id} className="grid grid-cols-5 py-3 items-center text-sm">
-                      <div className="font-semibold text-white">{item.name}</div>
-                      <div className="text-gray-400">{item.unit?.symbol || '-'}</div>
-                      <div className="text-right font-mono">{Number(item.openingQuantity)}</div>
-                      <div className="text-right font-mono">{formatRupees(item.openingRate)}</div>
+                      <button
+                        onClick={() => setSelectedItem(item)}
+                        type="button"
+                        className="font-semibold text-left text-white hover:text-amber-500 hover:underline transition cursor-pointer"
+                      >
+                        {item.name}
+                      </button>
+                      <div className="text-gray-400 uppercase">{item.unit || 'PCS'}</div>
+                      <div className="text-right font-mono">{item.batches?.reduce((sum, b) => sum + b.currentQty, 0) || 0}</div>
+                      <div className="text-right font-mono">{formatRupees(item.price)}</div>
                       <div className="text-right text-gray-400">
                         <button onClick={() => deleteItemMut.mutate(item.id)} className="hover:text-red-400 transition"><Trash2 className="h-4 w-4 ml-auto" /></button>
                       </div>
@@ -313,6 +327,20 @@ export default function MastersPage() {
                   <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Phone Number</label>
                   <input type="text" value={partyForm.phone} onChange={e => setPartyForm({ ...partyForm, phone: e.target.value })} className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white placeholder-gray-600 outline-none text-sm" />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Email Address</label>
+                  <input type="email" value={partyForm.email} onChange={e => setPartyForm({ ...partyForm, email: e.target.value })} placeholder="info@company.com" className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white placeholder-gray-600 outline-none text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">State (GST Region)</label>
+                  <input type="text" value={partyForm.state} onChange={e => setPartyForm({ ...partyForm, state: e.target.value })} placeholder="Maharashtra" className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white placeholder-gray-600 outline-none text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Billing Address</label>
+                <textarea rows={2} value={partyForm.address} onChange={e => setPartyForm({ ...partyForm, address: e.target.value })} placeholder="Enter street address..." className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white placeholder-gray-600 outline-none text-sm" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -455,6 +483,181 @@ export default function MastersPage() {
                 <button type="submit" className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-xs">Save Tax</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Party Details Modal ── */}
+      {selectedParty && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="glass max-w-md w-full p-6 rounded-xl border border-gray-800 shadow-2xl relative">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border mb-2 ${
+                  selectedParty.type === 'CUSTOMER' 
+                    ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' 
+                    : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+                }`}>
+                  {selectedParty.type}
+                </span>
+                <h3 className="text-lg font-bold text-white leading-tight">{selectedParty.name}</h3>
+              </div>
+              <button 
+                onClick={() => setSelectedParty(null)}
+                className="text-gray-500 hover:text-white transition text-sm font-bold px-2 py-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-4 border-t border-gray-800 pt-3">
+                <div>
+                  <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">GSTIN</span>
+                  <span className="text-white font-mono font-medium">{selectedParty.gstin || 'Not Provided'}</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Phone</span>
+                  <span className="text-white font-medium">{selectedParty.phone || 'Not Provided'}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Email</span>
+                  <span className="text-white font-medium break-all">{selectedParty.email || 'Not Provided'}</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">State Region</span>
+                  <span className="text-white font-medium">{selectedParty.state || 'Not Provided'}</span>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-800 pt-3">
+                <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Billing Address</span>
+                <p className="text-gray-300 font-medium whitespace-pre-line leading-relaxed bg-[#0d1224] p-3 rounded-lg border border-gray-800/40">
+                  {selectedParty.address || 'No address provided'}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 border-t border-gray-800 pt-3">
+                <div>
+                  <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Credit Limit</span>
+                  <span className="text-white font-mono font-semibold">{formatRupees(selectedParty.creditLimit)}</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Credit Days</span>
+                  <span className="text-white font-semibold">{selectedParty.creditPeriodDays || selectedParty.creditDays || 0} Days</span>
+                </div>
+              </div>
+
+              {selectedParty.ledger && (
+                <div className="border-t border-gray-800 pt-3">
+                  <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Linked General Ledger</span>
+                  <span className="text-amber-500 font-medium">{selectedParty.ledger.name}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-4 mt-4 border-t border-gray-800">
+              <button 
+                onClick={() => setSelectedParty(null)}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-bold rounded-lg text-xs cursor-pointer"
+              >
+                Close View
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Stock Item Details Modal ── */}
+      {selectedItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="glass max-w-md w-full p-6 rounded-xl border border-gray-800 shadow-2xl relative">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded border border-indigo-500/20 bg-indigo-500/10 text-indigo-400 mb-2 uppercase">
+                  {selectedItem.type || 'MEDICINE'}
+                </span>
+                <h3 className="text-lg font-bold text-white leading-tight">{selectedItem.name}</h3>
+              </div>
+              <button 
+                onClick={() => setSelectedItem(null)}
+                className="text-gray-500 hover:text-white transition text-sm font-bold px-2 py-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-4 border-t border-gray-800 pt-3">
+                <div>
+                  <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">HSN Code</span>
+                  <span className="text-white font-mono font-medium">{selectedItem.hsnCode || 'Not Provided'}</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">GST Rate</span>
+                  <span className="text-white font-mono font-semibold">{selectedItem.gstRate}%</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Retail Price</span>
+                  <span className="text-white font-mono font-semibold">{formatRupees(selectedItem.price)}</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Base Unit</span>
+                  <span className="text-white font-semibold uppercase">{selectedItem.unit || 'PCS'}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Reorder Level</span>
+                  <span className="text-white font-semibold font-mono">{selectedItem.reorderLevel || 0} {selectedItem.unit || 'PCS'}</span>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Total Available Stock</span>
+                  <span className="text-emerald-400 font-bold font-mono">
+                    {selectedItem.batches?.reduce((sum, b) => sum + b.currentQty, 0) || 0} {selectedItem.unit || 'PCS'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Batches Table */}
+              <div className="border-t border-gray-800 pt-3">
+                <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Active Batches Stock</span>
+                {selectedItem.batches && selectedItem.batches.length > 0 ? (
+                  <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
+                    <div className="grid grid-cols-3 text-[10px] font-bold text-gray-500 uppercase border-b border-gray-800/40 pb-1">
+                      <div>Batch No.</div>
+                      <div>Expiry</div>
+                      <div className="text-right">Qty</div>
+                    </div>
+                    {selectedItem.batches.map(b => (
+                      <div key={b.id} className="grid grid-cols-3 text-xs py-1 text-gray-300 font-mono">
+                        <div className="font-semibold text-white">{b.batchNumber}</div>
+                        <div>{new Date(b.expiryDate).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })}</div>
+                        <div className="text-right font-bold text-emerald-400">{b.currentQty}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-600 italic">No active batches or stock registered.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-4 mt-4 border-t border-gray-800">
+              <button 
+                onClick={() => setSelectedItem(null)}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-bold rounded-lg text-xs cursor-pointer"
+              >
+                Close View
+              </button>
+            </div>
           </div>
         </div>
       )}

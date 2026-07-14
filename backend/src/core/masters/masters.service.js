@@ -7,6 +7,7 @@ import { prisma } from '../../shared/database/prisma.js';
 export async function listParties({ type }) {
   return prisma.party.findMany({
     where: type ? { type } : {},
+    include: { ledger: true },
     orderBy: { name: 'asc' },
   });
 }

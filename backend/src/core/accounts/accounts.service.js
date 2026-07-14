@@ -120,7 +120,7 @@ export async function getLedger(id) {
   return ledger;
 }
 
-export async function createLedger({ name, groupId, openingBalance, openingBalanceType }) {
+export async function createLedger({ name, groupId, openingBalance, openingBalanceType, description }) {
   const group = await prisma.ledgerGroup.findUnique({ where: { id: groupId } });
   if (!group) {
     const err = new Error('Ledger group not found.');
@@ -141,11 +141,12 @@ export async function createLedger({ name, groupId, openingBalance, openingBalan
       groupId,
       openingBalance: openingBalance || 0,
       openingBalanceType: openingBalanceType || 'DEBIT',
+      description: description || null,
     },
   });
 }
 
-export async function updateLedger(id, { name, groupId, openingBalance, openingBalanceType }) {
+export async function updateLedger(id, { name, groupId, openingBalance, openingBalanceType, description }) {
   const ledger = await prisma.ledger.findUnique({ where: { id } });
   if (!ledger) {
     const err = new Error('Ledger not found.');
@@ -169,6 +170,7 @@ export async function updateLedger(id, { name, groupId, openingBalance, openingB
       groupId: groupId ?? ledger.groupId,
       openingBalance: openingBalance ?? ledger.openingBalance,
       openingBalanceType: openingBalanceType ?? ledger.openingBalanceType,
+      description: description !== undefined ? description : ledger.description,
     },
   });
 }
