@@ -41,7 +41,8 @@ export default function GatewayPage() {
         { name: 'Balance Sheet', desc: 'Asset and liability statement with charts', href: '/reports/balance-sheet' },
         { name: 'Profit & Loss A/c', desc: 'Trading and income summary with charts', href: '/reports/profit-loss' },
         { name: 'Stock Summary', desc: 'Realtime inventory valuation summary', href: '/reports/stock-summary' },
-        { name: 'More Reports', desc: 'Day Book, Outstanding, Trial Balance, Cash Flow', href: '/reports' }
+        { name: 'More Reports', desc: 'Day Book, Outstanding, Trial Balance, Cash Flow', href: '/reports' },
+        { name: 'GST Reports', desc: 'GST payable summary, GSTR-1 and GSTR-3B breakup', href: '/reports/gst' }
       ]
     },
     {

@@ -1,81 +1,115 @@
 // ============================================
-// masters.prisma - Master data (Party, Product, Batch)
+// masters.prisma - Master data (Party, Product, Batch, Cost Centre)
 // ============================================
 
 model Party {
-  id               String    @id @default(uuid())
+  id        String  @id @default(uuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   // --- Auto-fetched from existing VS Arogya app ---
-  externalId       String?   @unique   // ID in the existing app, used to match on re-sync
-  name             String
-  gstin            String?
-  phone            String?
-  email            String?
-  address          String?
-  state            String?
+  externalId String? // ID in the existing app, used to match on re-sync
+  name       String
+  gstin      String?
+  pan        String?
+  phone      String?
+  email      String?
+  address    String?
+  city       String?
+  state      String?
+  pincode    String?
 
   // --- Manual fields (billing-specific, not in existing app) ---
   type             PartyType @default(CUSTOMER)
-  creditLimit      Decimal?  @db.Decimal(12, 2)
+  creditLimit      Decimal?  @db.Decimal(14, 2)
   creditPeriodDays Int?      @default(30)
-  openingBalance   Decimal?  @db.Decimal(12, 2) @default(0)
+  openingBalance   Decimal   @default(0) @db.Decimal(14, 2)
+  isActive         Boolean   @default(true)
 
   // Backing Ledger Link
-  ledgerId         String    @unique
-  ledger           Ledger    @relation(fields: [ledgerId], references: [id])
+  ledgerId String @unique
+  ledger   Ledger @relation(fields: [ledgerId], references: [id])
 
-  lastSyncedAt     DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  lastSyncedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  purchases        Purchase[]
-  sales            Sale[]
-  payments         Payment[]
+  purchases Purchase[]
+  sales     Sale[]
+  payments  Payment[]
+  vouchers  Voucher[]
 
-  @@index([gstin])
-  @@index([name])
+  @@unique([companyId, externalId])
+  @@index([companyId, name])
+  @@index([companyId, gstin])
 }
 
 model Product {
-  id            String   @id @default(uuid())
+  id        String  @id @default(uuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   // --- Auto-fetched from existing VS Arogya app ---
-  externalId    String?  @unique
-  name          String
-  type          String?           // e.g. Tablet, Syrup, Injection
-  price         Decimal  @db.Decimal(12, 2)
-  unit          String?  @default("PCS")
+  externalId String?
+  name       String
+  sku        String?
+  type       String? // e.g. Tablet, Syrup, Injection
+  price      Decimal @db.Decimal(14, 2)
+  unit       String  @default("PCS")
 
   // --- Manual fields (billing-specific) ---
-  hsnCode       String?
-  gstRate       Decimal  @db.Decimal(5, 2) @default(0)   // e.g. 12.00 for 12%
-  reorderLevel  Int?     @default(0)
+  hsnCode      String?
+  gstRate      Decimal @default(0) @db.Decimal(5, 2) // e.g. 12.00 for 12%
+  reorderLevel Int     @default(0)
+  isActive     Boolean @default(true)
 
-  lastSyncedAt  DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  lastSyncedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  batches       Batch[]
+  batches            Batch[]
+  stockLedgerEntries StockLedgerEntry[]
 
-  @@index([name])
+  @@unique([companyId, externalId])
+  @@index([companyId, name])
+  @@index([companyId, sku])
 }
 
 model Batch {
-  id            String   @id @default(uuid())
-  productId     String
-  product       Product  @relation(fields: [productId], references: [id])
+  id        String  @id @default(uuid())
+  companyId String // denormalized from product.companyId - fast expiry-alert queries without a join
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  batchNumber   String
-  expiryDate    DateTime
-  mrp           Decimal  @db.Decimal(12, 2)
-  currentQty    Int      @default(0)
+  batchNumber String
+  expiryDate  DateTime
+  mrp         Decimal  @db.Decimal(14, 2)
+  currentQty  Int      @default(0)
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  purchaseItems PurchaseItem[]
-  saleItems     SaleItem[]
+  purchaseItems      PurchaseItem[]
+  saleItems          SaleItem[]
+  stockLedgerEntries StockLedgerEntry[]
 
   @@unique([productId, batchNumber])
-  @@index([expiryDate])
+  @@index([companyId, expiryDate])
+}
+
+model CostCentre {
+  id        String       @id @default(uuid())
+  companyId String
+  company   Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  parentId  String?
+  parent    CostCentre?  @relation("CostCentreHierarchy", fields: [parentId], references: [id])
+  children  CostCentre[] @relation("CostCentreHierarchy")
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  voucherLines VoucherLine[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
 }

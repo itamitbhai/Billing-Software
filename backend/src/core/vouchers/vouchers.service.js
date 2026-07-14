@@ -1,43 +1,8 @@
 import { prisma } from '../../shared/database/prisma.js';
+import { paginate, paginatedResult } from '../../shared/utils/pagination.js';
+import { getOrCreateFinancialYear, nextVoucherNumber } from '../../shared/utils/voucher-sequence.js';
 
-const VOUCHER_TYPE_PREFIXES = {
-  SALES:       'SL',
-  PURCHASE:    'PU',
-  RECEIPT:     'RC',
-  PAYMENT:     'PY',
-  CONTRA:      'CT',
-  JOURNAL:     'JL',
-  CREDIT_NOTE: 'CN',
-  DEBIT_NOTE:  'DN',
-};
-
-async function generateVoucherNumber(tx, type) {
-  const prefix = VOUCHER_TYPE_PREFIXES[type] || 'VN';
-  const count = await tx.voucher.count({ where: { type } });
-  return `${prefix}-${String(count + 1).padStart(4, '0')}`;
-}
-
-async function getActiveFinancialYear(tx, date) {
-  const d = new Date(date);
-  const year = d.getFullYear();
-  let fyStart, fyEnd;
-  if (d.getMonth() >= 3) {
-    fyStart = new Date(year, 3, 1);
-    fyEnd = new Date(year + 1, 2, 31, 23, 59, 59);
-  } else {
-    fyStart = new Date(year - 1, 3, 1);
-    fyEnd = new Date(year, 2, 31, 23, 59, 59);
-  }
-  const name = `${fyStart.getFullYear()}-${String(fyEnd.getFullYear()).slice(-2)}`;
-
-  let fy = await tx.financialYear.findUnique({ where: { name } });
-  if (!fy) {
-    fy = await tx.financialYear.create({
-      data: { name, startDate: fyStart, endDate: fyEnd, isActive: true }
-    });
-  }
-  return fy;
-}
+const MANUAL_TYPES = ['CONTRA', 'JOURNAL', 'CREDIT_NOTE', 'DEBIT_NOTE'];
 
 function validateDoubleEntry(lines) {
   let totalDebit = 0;
@@ -53,11 +18,12 @@ function validateDoubleEntry(lines) {
   }
 }
 
-export async function listVouchers({ type, startDate, endDate, page = 1, limit = 50 } = {}) {
-  const take = Math.min(parseInt(limit) || 50, 200);
-  const skip = (parseInt(page) - 1 || 0) * take;
+export async function listVouchers({ companyId, type, startDate, endDate, page = 1, limit = 50 } = {}) {
+  const { take, skip, page: currentPage } = paginate({ page, limit });
 
   const where = {
+    companyId,
+    isDeleted: false,
     ...(type ? { type } : {}),
     ...(startDate || endDate ? {
       date: {
@@ -67,14 +33,10 @@ export async function listVouchers({ type, startDate, endDate, page = 1, limit =
     } : {}),
   };
 
-  const [vouchers, total] = await Promise.all([
+  const [rows, total] = await Promise.all([
     prisma.voucher.findMany({
       where,
-      include: {
-        lines: {
-          include: { ledger: { select: { id: true, name: true } } }
-        }
-      },
+      include: { lines: { include: { ledger: { select: { id: true, name: true } } } }, party: { select: { id: true, name: true } } },
       orderBy: { date: 'desc' },
       take,
       skip,
@@ -82,23 +44,13 @@ export async function listVouchers({ type, startDate, endDate, page = 1, limit =
     prisma.voucher.count({ where }),
   ]);
 
-  return {
-    vouchers,
-    total,
-    page: parseInt(page) || 1,
-    limit: take,
-    totalPages: Math.ceil(total / take)
-  };
+  return paginatedResult({ rows, total, page: currentPage, limit: take });
 }
 
-export async function getVoucher(id) {
-  const voucher = await prisma.voucher.findUnique({
-    where: { id },
-    include: {
-      lines: {
-        include: { ledger: true }
-      }
-    }
+export async function getVoucher(companyId, id) {
+  const voucher = await prisma.voucher.findFirst({
+    where: { id, companyId },
+    include: { lines: { include: { ledger: true, costCentre: true } }, party: true },
   });
   if (!voucher) {
     const err = new Error('Voucher not found.');
@@ -108,27 +60,35 @@ export async function getVoucher(id) {
   return voucher;
 }
 
-export async function createVoucher(data) {
-  const { type, date, narration, lines } = data;
+export async function createVoucher(companyId, data, createdBy) {
+  const { type, date, narration, partyId, lines } = data;
+
+  if (!MANUAL_TYPES.includes(type)) {
+    const err = new Error(`${type} vouchers are created automatically from Sales/Purchases/Payments. Use the billing module instead.`);
+    err.status = 400;
+    throw err;
+  }
   if (!lines || lines.length < 2) {
     const err = new Error('A voucher must contain at least 2 entry lines.');
     err.status = 400;
     throw err;
   }
-
   validateDoubleEntry(lines);
 
   return prisma.$transaction(async (tx) => {
-    const fy = await getActiveFinancialYear(tx, date);
-    const voucherNumber = await generateVoucherNumber(tx, type);
+    const fy = await getOrCreateFinancialYear(tx, companyId, date);
+    const { voucherNumber } = await nextVoucherNumber(tx, { companyId, financialYear: fy, type });
 
     const voucher = await tx.voucher.create({
       data: {
+        companyId,
         voucherNumber,
         type,
         date: new Date(date),
         narration: narration || null,
+        partyId: partyId || null,
         financialYearId: fy.id,
+        createdBy: createdBy || null,
       }
     });
 
@@ -139,6 +99,11 @@ export async function createVoucher(data) {
           ledgerId: line.ledgerId,
           type: line.type,
           amount: line.amount,
+          cgstAmount: line.cgstAmount || 0,
+          sgstAmount: line.sgstAmount || 0,
+          igstAmount: line.igstAmount || 0,
+          costCentreId: line.costCentreId || null,
+          description: line.description || null,
         }
       });
     }
@@ -150,12 +115,25 @@ export async function createVoucher(data) {
   });
 }
 
-export async function updateVoucher(id, data) {
-  const { type, date, narration, lines } = data;
-  const voucher = await prisma.voucher.findUnique({ where: { id } });
+export async function updateVoucher(companyId, id, data) {
+  const { date, narration, lines } = data;
+  const voucher = await prisma.voucher.findFirst({
+    where: { id, companyId },
+    include: { sale: true, purchase: true, payment: true },
+  });
   if (!voucher) {
     const err = new Error('Voucher not found.');
     err.status = 404;
+    throw err;
+  }
+  if (voucher.isDeleted) {
+    const err = new Error('Cannot edit a cancelled voucher.');
+    err.status = 400;
+    throw err;
+  }
+  if (voucher.sale || voucher.purchase || voucher.payment) {
+    const err = new Error('This voucher was auto-generated from a Sale/Purchase/Payment. Edit the source record instead.');
+    err.status = 400;
     throw err;
   }
 
@@ -174,7 +152,6 @@ export async function updateVoucher(id, data) {
       data: {
         date: date ? new Date(date) : undefined,
         narration: narration !== undefined ? narration : undefined,
-        type: type ?? undefined,
       }
     });
 
@@ -187,6 +164,11 @@ export async function updateVoucher(id, data) {
             ledgerId: line.ledgerId,
             type: line.type,
             amount: line.amount,
+            cgstAmount: line.cgstAmount || 0,
+            sgstAmount: line.sgstAmount || 0,
+            igstAmount: line.igstAmount || 0,
+            costCentreId: line.costCentreId || null,
+            description: line.description || null,
           }
         });
       }
@@ -199,12 +181,32 @@ export async function updateVoucher(id, data) {
   });
 }
 
-export async function deleteVoucher(id) {
-  const voucher = await prisma.voucher.findUnique({ where: { id } });
+/** Soft-delete ("cancel") a voucher — never hard-delete posted accounting entries. */
+export async function deleteVoucher(companyId, id, deletedBy) {
+  const voucher = await prisma.voucher.findFirst({
+    where: { id, companyId },
+    include: { sale: true, purchase: true, payment: true },
+  });
   if (!voucher) {
     const err = new Error('Voucher not found.');
     err.status = 404;
     throw err;
   }
-  return prisma.voucher.delete({ where: { id } });
+  if (voucher.isDeleted) {
+    const err = new Error('Voucher is already cancelled.');
+    err.status = 400;
+    throw err;
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const cancelled = await tx.voucher.update({
+      where: { id },
+      data: { isDeleted: true, deletedAt: new Date(), deletedBy: deletedBy || null },
+    });
+
+    if (voucher.sale) await tx.sale.update({ where: { id: voucher.sale.id }, data: { isCancelled: true } });
+    if (voucher.purchase) await tx.purchase.update({ where: { id: voucher.purchase.id }, data: { isCancelled: true } });
+
+    return cancelled;
+  });
 }

@@ -44,6 +44,7 @@ export async function requireAuth(req, res, next) {
     // Attach user information to request object
     req.user = {
       id: user.id,
+      companyId: user.companyId,
       email: user.email,
       name: user.name,
       role: user.role,

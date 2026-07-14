@@ -1,11 +1,15 @@
+import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../../shared/database/prisma.js';
+import { seedTallyDefaults } from '../../shared/utils/tally-seed.js';
 
-// Generate Access Token (JWT)
+const VALID_ROLES = ['ADMIN', 'ACCOUNTANT', 'STAFF'];
+
 function generateAccessToken(user) {
   const payload = {
     userId: user.id,
+    companyId: user.companyId,
     email: user.email,
     role: user.role,
   };
@@ -14,85 +18,105 @@ function generateAccessToken(user) {
   return jwt.sign(payload, secret, { expiresIn });
 }
 
-// Generate Refresh Token (JWT)
 function generateRefreshToken(user) {
   const payload = {
     userId: user.id,
+    companyId: user.companyId,
+    jti: crypto.randomUUID(), // guarantees a distinct token even if issued within the same second
   };
   const secret = process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret';
   const expiresIn = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
   return jwt.sign(payload, secret, { expiresIn });
 }
 
-export async function registerCeo({ companyName, name, email, password }) {
-  // 1. Check if user already exists
-  const existingUser = await prisma.user.findUnique({
-    where: { email },
-  });
+function hashToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
 
+function refreshExpiryDate() {
+  const raw = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+  const match = /^(\d+)([smhd])$/.exec(raw);
+  const amount = match ? parseInt(match[1], 10) : 7;
+  const unitMs = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[match ? match[2] : 'd'];
+  return new Date(Date.now() + amount * unitMs);
+}
+
+async function createSession(tx, user, refreshToken, meta = {}) {
+  await tx.session.create({
+    data: {
+      userId: user.id,
+      refreshTokenHash: hashToken(refreshToken),
+      expiresAt: refreshExpiryDate(),
+      userAgent: meta.userAgent || null,
+      ipAddress: meta.ipAddress || null,
+    },
+  });
+}
+
+function publicUser(user) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    companyId: user.companyId,
+  };
+}
+
+export async function registerCeo({ companyName, name, email, password, state }) {
+  const existingUser = await prisma.user.findUnique({ where: { email } });
   if (existingUser) {
     const err = new Error('A user with this email already exists.');
     err.status = 400;
     throw err;
   }
 
-  // 2. Hash password
   const salt = await bcrypt.genSalt(10);
   const passwordHash = await bcrypt.hash(password, salt);
 
-  // 3. Create CEO Admin User
-  const user = await prisma.user.create({
-    data: {
-      name,
-      email,
-      passwordHash,
-      role: 'ADMIN',
-      isActive: true,
-    },
-  });
-
-  // 4. Create default Company Settings if none exists
-  let companySettings = await prisma.companySettings.findFirst();
-  if (!companySettings) {
-    companySettings = await prisma.companySettings.create({
+  return prisma.$transaction(async (tx) => {
+    const company = await tx.company.create({
       data: {
-        companyName: companyName || 'VS Arogya Meda',
-        gstin: '27AAAAA1111A1Z1', // Default dummy GSTIN
-        state: 'Maharashtra', // Default dummy State
+        name: companyName,
+        state: state || 'Maharashtra',
       },
     });
-  }
 
-  // 5. Generate tokens
-  const accessToken = generateAccessToken(user);
-  const refreshToken = generateRefreshToken(user);
+    const user = await tx.user.create({
+      data: {
+        companyId: company.id,
+        name,
+        email,
+        passwordHash,
+        role: 'ADMIN',
+        isActive: true,
+        lastLoginAt: new Date(),
+      },
+    });
 
-  return {
-    accessToken,
-    refreshToken,
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-    },
-    company: companySettings,
-  };
+    await seedTallyDefaults(tx, company.id);
+
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+    await createSession(tx, user, refreshToken);
+
+    return {
+      accessToken,
+      refreshToken,
+      user: publicUser(user),
+      company,
+    };
+  });
 }
 
 export async function login({ email, password }) {
-  // 1. Fetch user from database
-  const user = await prisma.user.findUnique({
-    where: { email },
-  });
-
+  const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
     const err = new Error('Invalid email or password.');
     err.status = 401;
     throw err;
   }
 
-  // 2. Validate active status and credentials
   if (!user.isActive) {
     const err = new Error('Your account is currently inactive.');
     err.status = 403;
@@ -106,60 +130,75 @@ export async function login({ email, password }) {
     throw err;
   }
 
-  // 3. Generate tokens
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(user);
 
-  const company = await prisma.companySettings.findFirst() || null;
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+    await createSession(tx, user, refreshToken);
+  });
+
+  const company = await prisma.company.findUnique({ where: { id: user.companyId } });
 
   return {
     accessToken,
     refreshToken,
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-    },
+    user: publicUser(user),
     company,
   };
 }
 
 export async function refresh({ refreshToken }) {
+  const secret = process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret';
+  let decoded;
   try {
-    const secret = process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret';
-    const decoded = jwt.verify(refreshToken, secret);
-
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-    });
-
-    if (!user || !user.isActive) {
-      const err = new Error('Invalid session.');
-      err.status = 401;
-      throw err;
-    }
-
-    const accessToken = generateAccessToken(user);
-    return { accessToken };
+    decoded = jwt.verify(refreshToken, secret);
   } catch (err) {
     const error = new Error('Invalid or expired refresh token.');
     error.status = 401;
     throw error;
   }
+
+  const tokenHash = hashToken(refreshToken);
+  const session = await prisma.session.findUnique({ where: { refreshTokenHash: tokenHash } });
+  if (!session || session.isRevoked || session.expiresAt < new Date()) {
+    const error = new Error('Session is no longer valid. Please login again.');
+    error.status = 401;
+    throw error;
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+  if (!user || !user.isActive) {
+    const error = new Error('Invalid session.');
+    error.status = 401;
+    throw error;
+  }
+
+  const newAccessToken = generateAccessToken(user);
+  const newRefreshToken = generateRefreshToken(user);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.session.update({ where: { id: session.id }, data: { isRevoked: true } });
+    await createSession(tx, user, newRefreshToken);
+  });
+
+  return { accessToken: newAccessToken, refreshToken: newRefreshToken };
 }
 
-export async function logout() {
-  // In a stateless JWT implementation, logout is handled by the client discarding the token.
+export async function logout({ refreshToken }) {
+  if (!refreshToken) return { success: true };
+
+  const tokenHash = hashToken(refreshToken);
+  await prisma.session.updateMany({
+    where: { refreshTokenHash: tokenHash, isRevoked: false },
+    data: { isRevoked: true },
+  });
+
   return { success: true };
 }
 
-export async function registerEmployee({ name, email, password, role }) {
-  // Check if user exists
-  const existingUser = await prisma.user.findUnique({
-    where: { email },
-  });
-
+export async function registerEmployee({ companyId, name, email, password, role }) {
+  const existingUser = await prisma.user.findUnique({ where: { email } });
   if (existingUser) {
     const err = new Error('A user with this email already exists.');
     err.status = 400;
@@ -169,10 +208,11 @@ export async function registerEmployee({ name, email, password, role }) {
   const salt = await bcrypt.genSalt(10);
   const passwordHash = await bcrypt.hash(password, salt);
 
-  const employeeRole = (role === 'ADMIN' || role === 'ACCOUNTANT' || role === 'STAFF') ? role : 'STAFF';
+  const employeeRole = VALID_ROLES.includes(role) ? role : 'STAFF';
 
   const user = await prisma.user.create({
     data: {
+      companyId,
       name,
       email,
       passwordHash,
@@ -181,22 +221,19 @@ export async function registerEmployee({ name, email, password, role }) {
     },
   });
 
-  return {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-  };
+  return publicUser(user);
 }
 
-export async function listUsers() {
+export async function listUsers({ companyId }) {
   return prisma.user.findMany({
+    where: { companyId },
     select: {
       id: true,
       name: true,
       email: true,
       role: true,
       isActive: true,
+      lastLoginAt: true,
       createdAt: true,
     },
     orderBy: { name: 'asc' },

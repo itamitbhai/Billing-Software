@@ -21,6 +21,7 @@ import ProfitLossPage from './pages/reports/ProfitLossPage';
 import StockSummaryPage from './pages/reports/StockSummaryPage';
 import DayBookPage from './pages/reports/DayBookPage';
 import MoreReportsPage from './pages/reports/MoreReportsPage';
+import GstReportsPage from './pages/reports/GstReportsPage';
 import UtilitiesPage from './pages/utilities/UtilitiesPage';
 
 // Route Guards
@@ -130,6 +131,13 @@ export default function App() {
           <ProtectedRoute>
             <AppShell>
               <MoreReportsPage />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+        <Route path="/reports/gst" element={
+          <ProtectedRoute>
+            <AppShell>
+              <GstReportsPage />
             </AppShell>
           </ProtectedRoute>
         } />

@@ -1,5 +1,7 @@
 import * as billingService from './billing.service.js';
 
+const SUPPLY_TYPES = ['TAXABLE', 'ZERO_RATED_EXPORT', 'ZERO_RATED_SEZ', 'EXEMPT', 'NIL_RATED', 'NON_GST'];
+
 // ============================================
 // PURCHASES
 // ============================================
@@ -14,7 +16,7 @@ export async function createPurchase(req, res, next) {
       });
     }
 
-    const purchase = await billingService.createPurchase(req.body);
+    const purchase = await billingService.createPurchase(req.user.companyId, req.body, req.user.id);
     res.status(201).json({
       success: true,
       message: 'Purchase recorded successfully and batch stocks updated.',
@@ -25,14 +27,15 @@ export async function createPurchase(req, res, next) {
 
 export async function listPurchases(req, res, next) {
   try {
-    const purchases = await billingService.listPurchases();
-    res.json({ success: true, count: purchases.length, data: purchases });
+    const { page, limit } = req.query;
+    const result = await billingService.listPurchases({ companyId: req.user.companyId, page, limit });
+    res.json({ success: true, count: result.data.length, ...result });
   } catch (err) { next(err); }
 }
 
 export async function getPurchase(req, res, next) {
   try {
-    const purchase = await billingService.getPurchase(req.params.id);
+    const purchase = await billingService.getPurchase(req.user.companyId, req.params.id);
     res.json({ success: true, data: purchase });
   } catch (err) { next(err); }
 }
@@ -43,15 +46,18 @@ export async function getPurchase(req, res, next) {
 
 export async function createSale(req, res, next) {
   try {
-    const { customerId, invoiceNumber, saleDate, items } = req.body;
-    if (!customerId || !invoiceNumber || !saleDate || !items || !items.length) {
+    const { customerId, saleDate, items, supplyType } = req.body;
+    if (!customerId || !saleDate || !items || !items.length) {
       return res.status(400).json({
         success: false,
-        message: 'customerId, invoiceNumber, saleDate, and items (with at least one item) are required.',
+        message: 'customerId, saleDate, and items (with at least one item) are required.',
       });
     }
+    if (supplyType && !SUPPLY_TYPES.includes(supplyType)) {
+      return res.status(400).json({ success: false, message: `"supplyType" must be one of: ${SUPPLY_TYPES.join(', ')}.` });
+    }
 
-    const sale = await billingService.createSale(req.body);
+    const sale = await billingService.createSale(req.user.companyId, req.body, req.user.id);
     res.status(201).json({
       success: true,
       message: 'Sale invoice created successfully and batch stocks decremented.',
@@ -62,14 +68,15 @@ export async function createSale(req, res, next) {
 
 export async function listSales(req, res, next) {
   try {
-    const sales = await billingService.listSales();
-    res.json({ success: true, count: sales.length, data: sales });
+    const { page, limit, status } = req.query;
+    const result = await billingService.listSales({ companyId: req.user.companyId, status, page, limit });
+    res.json({ success: true, count: result.data.length, ...result });
   } catch (err) { next(err); }
 }
 
 export async function getSale(req, res, next) {
   try {
-    const sale = await billingService.getSale(req.params.id);
+    const sale = await billingService.getSale(req.user.companyId, req.params.id);
     res.json({ success: true, data: sale });
   } catch (err) { next(err); }
 }
@@ -88,11 +95,7 @@ export async function createPayment(req, res, next) {
       });
     }
 
-    // Attach recordedBy from logged-in user
-    const payment = await billingService.createPayment({
-      ...req.body,
-      recordedById: req.user.id,
-    });
+    const payment = await billingService.createPayment(req.user.companyId, req.body, req.user.id);
 
     res.status(201).json({
       success: true,
@@ -104,14 +107,15 @@ export async function createPayment(req, res, next) {
 
 export async function listPayments(req, res, next) {
   try {
-    const payments = await billingService.listPayments();
-    res.json({ success: true, count: payments.length, data: payments });
+    const { page, limit } = req.query;
+    const result = await billingService.listPayments({ companyId: req.user.companyId, page, limit });
+    res.json({ success: true, count: result.data.length, ...result });
   } catch (err) { next(err); }
 }
 
 export async function getPayment(req, res, next) {
   try {
-    const payment = await billingService.getPayment(req.params.id);
+    const payment = await billingService.getPayment(req.user.companyId, req.params.id);
     res.json({ success: true, data: payment });
   } catch (err) { next(err); }
 }
@@ -122,7 +126,7 @@ export async function getLastSale(req, res, next) {
     if (!customerId) {
       return res.status(400).json({ success: false, message: '"customerId" is required.' });
     }
-    const sale = await billingService.getLastSale(customerId);
+    const sale = await billingService.getLastSale(req.user.companyId, customerId);
     res.json({ success: true, data: sale });
   } catch (err) { next(err); }
 }

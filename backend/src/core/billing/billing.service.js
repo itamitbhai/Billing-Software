@@ -1,180 +1,249 @@
+import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '../../shared/database/prisma.js';
+import { paginate, paginatedResult } from '../../shared/utils/pagination.js';
+import { getOrCreateFinancialYear, nextVoucherNumber, formatInvoiceNumber } from '../../shared/utils/voucher-sequence.js';
+import { recordStockMovement } from '../../shared/utils/stock-ledger.js';
+
+const ZERO = new Decimal(0);
 
 // ============================================
-// HELPERS FOR DOUBLE ENTRY POSTING
+// HELPERS
 // ============================================
 
-async function getOrCreateFinancialYear(tx, date) {
-  const d = new Date(date);
-  const year = d.getFullYear();
-  let fyStart, fyEnd;
-  
-  if (d.getMonth() >= 3) { // April to March
-    fyStart = new Date(year, 3, 1);
-    fyEnd = new Date(year + 1, 2, 31, 23, 59, 59);
-  } else {
-    fyStart = new Date(year - 1, 3, 1);
-    fyEnd = new Date(year, 2, 31, 23, 59, 59);
-  }
-  const name = `${fyStart.getFullYear()}-${String(fyEnd.getFullYear()).slice(-2)}`;
-
-  let fy = await tx.financialYear.findUnique({
-    where: { name }
-  });
-  if (!fy) {
-    fy = await tx.financialYear.create({
-      data: {
-        name,
-        startDate: fyStart,
-        endDate: fyEnd,
-        isActive: true
-      }
-    });
-  }
-  return fy;
-}
-
-async function getOrCreateSystemLedger(tx, ledgerName, groupName, nature) {
-  let ledger = await tx.ledger.findUnique({ where: { name: ledgerName } });
+async function getOrCreateSystemLedger(tx, companyId, ledgerName, groupName, nature) {
+  let ledger = await tx.ledger.findUnique({ where: { companyId_name: { companyId, name: ledgerName } } });
   if (!ledger) {
-    let group = await tx.ledgerGroup.findUnique({ where: { name: groupName } });
+    let group = await tx.ledgerGroup.findUnique({ where: { companyId_name: { companyId, name: groupName } } });
     if (!group) {
-      group = await tx.ledgerGroup.create({
-        data: { name: groupName, nature }
-      });
+      group = await tx.ledgerGroup.create({ data: { companyId, name: groupName, nature, isSystem: true } });
     }
     ledger = await tx.ledger.create({
-      data: {
-        name: ledgerName,
-        groupId: group.id,
-        openingBalance: 0,
-        openingBalanceType: 'DEBIT'
-      }
+      data: { companyId, name: ledgerName, groupId: group.id, openingBalance: 0, openingBalanceType: 'DEBIT', isSystem: true },
     });
   }
   return ledger;
+}
+
+/** Intra-state sales/purchases split GST into CGST+SGST; inter-state uses IGST. */
+async function isIntraState(companyId, otherPartyState) {
+  const company = await prisma.company.findUnique({ where: { id: companyId }, select: { state: true } });
+  if (!company?.state || !otherPartyState) return true; // default to CGST/SGST when state is unknown
+  return company.state.trim().toLowerCase() === otherPartyState.trim().toLowerCase();
+}
+
+/**
+ * Prices each line from its own product's HSN/GST rate (never trusts a client-supplied
+ * tax amount) and splits the tax into CGST+SGST (intra-state) or IGST (inter-state).
+ * Each line keeps its own taxable value/rate/tax split, since a single blended
+ * per-invoice total can't be reconstructed into a rate-wise/HSN-wise GST return once an
+ * invoice mixes products taxed at different rates. `forceZeroTax` is used for Sale
+ * invoices classified as zero-rated/exempt/nil-rated/non-GST — no tax applies to those
+ * regardless of the product's configured rate.
+ */
+async function priceItems(companyId, items, { intraState, forceZeroTax = false } = {}) {
+  let subTotal = ZERO, cgstTotal = ZERO, sgstTotal = ZERO, igstTotal = ZERO;
+  const priced = [];
+
+  for (const item of items) {
+    const batch = await prisma.batch.findFirst({ where: { id: item.batchId, companyId }, include: { product: true } });
+    if (!batch) {
+      const err = new Error(`Batch ID ${item.batchId} not found.`);
+      err.status = 400;
+      throw err;
+    }
+
+    const qty = new Decimal(item.qty);
+    const rate = new Decimal(item.rate);
+    const taxableValue = qty.mul(rate);
+    const gstRate = forceZeroTax ? ZERO : new Decimal(item.gstRate ?? batch.product.gstRate);
+    const taxAmount = taxableValue.mul(gstRate).div(100);
+
+    let cgstAmount = ZERO, sgstAmount = ZERO, igstAmount = ZERO;
+    if (taxAmount.gt(0)) {
+      if (intraState) {
+        cgstAmount = taxAmount.div(2);
+        sgstAmount = taxAmount.sub(cgstAmount);
+      } else {
+        igstAmount = taxAmount;
+      }
+    }
+    const gstAmount = cgstAmount.add(sgstAmount).add(igstAmount);
+
+    subTotal = subTotal.add(taxableValue);
+    cgstTotal = cgstTotal.add(cgstAmount);
+    sgstTotal = sgstTotal.add(sgstAmount);
+    igstTotal = igstTotal.add(igstAmount);
+
+    priced.push({
+      ...item,
+      batch,
+      hsnCode: batch.product.hsnCode || null,
+      taxableValue,
+      gstRate,
+      gstAmount,
+      cgstAmount,
+      sgstAmount,
+      igstAmount,
+      amount: taxableValue.add(gstAmount),
+      itcEligible: item.itcEligible !== false,
+    });
+  }
+
+  const gstAmount = cgstTotal.add(sgstTotal).add(igstTotal);
+  return { priced, subTotal, gstAmount, cgstTotal, sgstTotal, igstTotal, totalAmount: subTotal.add(gstAmount) };
+}
+
+async function postGstLines(tx, { voucherId, companyId, cgstTotal, sgstTotal, igstTotal, direction }) {
+  // direction: 'OUTPUT' (sales, liability increases on CREDIT) | 'INPUT' (purchase, ITC asset increases on DEBIT)
+  const entryType = direction === 'OUTPUT' ? 'CREDIT' : 'DEBIT';
+  const groupName = direction === 'OUTPUT' ? 'Duties & Taxes' : 'Duties & Taxes (Input)';
+  const nature = direction === 'OUTPUT' ? 'LIABILITY' : 'ASSET';
+  const prefix = direction === 'OUTPUT' ? 'Output' : 'Input';
+
+  if (cgstTotal.gt(0)) {
+    const ledger = await getOrCreateSystemLedger(tx, companyId, `${prefix} CGST`, groupName, nature);
+    await tx.voucherLine.create({ data: { voucherId, ledgerId: ledger.id, type: entryType, amount: cgstTotal, cgstAmount: cgstTotal } });
+  }
+  if (sgstTotal.gt(0)) {
+    const ledger = await getOrCreateSystemLedger(tx, companyId, `${prefix} SGST`, groupName, nature);
+    await tx.voucherLine.create({ data: { voucherId, ledgerId: ledger.id, type: entryType, amount: sgstTotal, sgstAmount: sgstTotal } });
+  }
+  if (igstTotal.gt(0)) {
+    const ledger = await getOrCreateSystemLedger(tx, companyId, `${prefix} IGST`, groupName, nature);
+    await tx.voucherLine.create({ data: { voucherId, ledgerId: ledger.id, type: entryType, amount: igstTotal, igstAmount: igstTotal } });
+  }
 }
 
 // ============================================
 // PURCHASES (Stock IN)
 // ============================================
 
-export async function createPurchase({ supplierId, billNumber, purchaseDate, items }) {
-  // Validate Supplier
-  const supplier = await prisma.party.findUnique({ where: { id: supplierId } });
+export async function createPurchase(companyId, { supplierId, billNumber, purchaseDate, items, reverseCharge }, createdBy) {
+  const supplier = await prisma.party.findFirst({ where: { id: supplierId, companyId } });
   if (!supplier || (supplier.type !== 'SUPPLIER' && supplier.type !== 'BOTH')) {
     const err = new Error('Valid supplier not found.');
     err.status = 400;
     throw err;
   }
 
-  const totalAmount = items.reduce((sum, item) => sum + Number(item.amount), 0);
+  const duplicateBill = await prisma.purchase.findUnique({
+    where: { companyId_supplierId_billNumber: { companyId, supplierId, billNumber } },
+  });
+  if (duplicateBill) {
+    const err = new Error(`Bill number "${billNumber}" has already been recorded for this supplier.`);
+    err.status = 400;
+    throw err;
+  }
+
+  const intraState = await isIntraState(companyId, supplier.state);
+  const { priced, subTotal, gstAmount, cgstTotal, sgstTotal, igstTotal, totalAmount } = await priceItems(companyId, items, { intraState });
 
   return prisma.$transaction(async (tx) => {
-    // 1. Create Purchase record
-    const purchase = await tx.purchase.create({
+    const fy = await getOrCreateFinancialYear(tx, companyId, purchaseDate);
+    const purchaseLedger = await getOrCreateSystemLedger(tx, companyId, 'Purchase Ledger', 'Purchase Accounts', 'EXPENSE');
+
+    const { voucherNumber } = await nextVoucherNumber(tx, { companyId, financialYear: fy, type: 'PURCHASE' });
+
+    const voucher = await tx.voucher.create({
       data: {
-        supplierId,
-        billNumber,
-        purchaseDate: new Date(purchaseDate),
-        totalAmount,
+        companyId,
+        voucherNumber,
+        type: 'PURCHASE',
+        date: new Date(purchaseDate),
+        narration: `Purchase Bill: ${billNumber}`,
+        partyId: supplierId,
+        financialYearId: fy.id,
+        createdBy: createdBy || null,
       },
     });
 
-    // 2. Process items and update Batch inventory
-    for (const item of items) {
+    // Debit: Purchase Ledger (taxable value) + Input GST
+    await tx.voucherLine.create({ data: { voucherId: voucher.id, ledgerId: purchaseLedger.id, type: 'DEBIT', amount: subTotal } });
+    await postGstLines(tx, { voucherId: voucher.id, companyId, cgstTotal, sgstTotal, igstTotal, direction: 'INPUT' });
+    // Credit: Supplier Ledger (total payable)
+    await tx.voucherLine.create({ data: { voucherId: voucher.id, ledgerId: supplier.ledgerId, type: 'CREDIT', amount: totalAmount } });
+
+    const purchase = await tx.purchase.create({
+      data: {
+        companyId,
+        financialYearId: fy.id,
+        supplierId,
+        billNumber,
+        purchaseDate: new Date(purchaseDate),
+        subTotal,
+        gstAmount,
+        totalAmount,
+        reverseCharge: !!reverseCharge,
+        voucherId: voucher.id,
+        createdBy: createdBy || null,
+      },
+    });
+
+    for (const item of priced) {
       await tx.purchaseItem.create({
         data: {
           purchaseId: purchase.id,
           batchId: item.batchId,
           qty: item.qty,
           rate: item.rate,
-          gstAmount: item.gstAmount || 0,
+          gstAmount: item.gstAmount,
           amount: item.amount,
+          hsnCode: item.hsnCode,
+          taxableValue: item.taxableValue,
+          gstRate: item.gstRate,
+          cgstAmount: item.cgstAmount,
+          sgstAmount: item.sgstAmount,
+          igstAmount: item.igstAmount,
+          itcEligible: item.itcEligible,
         },
       });
 
-      await tx.batch.update({
-        where: { id: item.batchId },
-        data: {
-          currentQty: {
-            increment: item.qty,
-          },
-        },
+      await recordStockMovement(tx, {
+        companyId,
+        productId: item.batch.productId,
+        batchId: item.batchId,
+        movementType: 'IN',
+        referenceType: 'PURCHASE',
+        referenceId: purchase.id,
+        qty: item.qty,
+        rate: item.rate,
       });
     }
-
-    // 3. Double-Entry Posting:
-    // Debit: Purchase Account
-    // Credit: Supplier Ledger
-    const fy = await getOrCreateFinancialYear(tx, purchaseDate);
-    const purchaseLedger = await getOrCreateSystemLedger(tx, 'Purchase Ledger', 'Purchase Accounts', 'EXPENSE');
-
-    const voucherNumber = `V-PUR-${purchase.id.slice(0, 8)}-${billNumber}`;
-    
-    const voucher = await tx.voucher.create({
-      data: {
-        voucherNumber,
-        type: 'PURCHASE',
-        date: new Date(purchaseDate),
-        narration: `Purchase Invoice: ${billNumber}`,
-        financialYearId: fy.id,
-      }
-    });
-
-    // Debit Line (Purchase Ledger)
-    await tx.voucherLine.create({
-      data: {
-        voucherId: voucher.id,
-        ledgerId: purchaseLedger.id,
-        type: 'DEBIT',
-        amount: totalAmount,
-      }
-    });
-
-    // Credit Line (Supplier Ledger)
-    await tx.voucherLine.create({
-      data: {
-        voucherId: voucher.id,
-        ledgerId: supplier.ledgerId,
-        type: 'CREDIT',
-        amount: totalAmount,
-      }
-    });
 
     return tx.purchase.findUnique({
       where: { id: purchase.id },
       include: {
         supplier: { select: { name: true } },
-        items: {
-          include: {
-            batch: { select: { batchNumber: true } },
-          },
-        },
+        items: { include: { batch: { select: { batchNumber: true } } } },
       },
     });
   });
 }
 
-export async function listPurchases() {
-  return prisma.purchase.findMany({
-    include: { supplier: { select: { name: true } } },
-    orderBy: { purchaseDate: 'desc' },
-  });
+export async function listPurchases({ companyId, page, limit }) {
+  const { take, skip, page: currentPage } = paginate({ page, limit });
+  const where = { companyId };
+
+  const [rows, total] = await Promise.all([
+    prisma.purchase.findMany({
+      where,
+      include: { supplier: { select: { name: true } } },
+      orderBy: { purchaseDate: 'desc' },
+      take,
+      skip,
+    }),
+    prisma.purchase.count({ where }),
+  ]);
+
+  return paginatedResult({ rows, total, page: currentPage, limit: take });
 }
 
-export async function getPurchase(id) {
-  const purchase = await prisma.purchase.findUnique({
-    where: { id },
+export async function getPurchase(companyId, id) {
+  const purchase = await prisma.purchase.findFirst({
+    where: { id, companyId },
     include: {
       supplier: true,
-      items: {
-        include: {
-          batch: {
-            include: { product: true },
-          },
-        },
-      },
+      items: { include: { batch: { include: { product: true } } } },
     },
   });
   if (!purchase) {
@@ -189,134 +258,145 @@ export async function getPurchase(id) {
 // SALES (Stock OUT)
 // ============================================
 
-export async function createSale({ customerId, invoiceNumber, saleDate, items }) {
-  // Validate Customer
-  const customer = await prisma.party.findUnique({ where: { id: customerId } });
+export async function createSale(companyId, { customerId, saleDate, items, placeOfSupply, supplyType }, createdBy) {
+  const customer = await prisma.party.findFirst({ where: { id: customerId, companyId } });
   if (!customer || (customer.type !== 'CUSTOMER' && customer.type !== 'BOTH')) {
     const err = new Error('Valid customer not found.');
     err.status = 400;
     throw err;
   }
 
-  const totalAmount = items.reduce((sum, item) => sum + Number(item.amount), 0);
+  const resolvedSupplyType = supplyType || 'TAXABLE';
+  const resolvedPlaceOfSupply = placeOfSupply || customer.state || '';
+  const intraState = await isIntraState(companyId, resolvedPlaceOfSupply);
+  const forceZeroTax = resolvedSupplyType !== 'TAXABLE';
+  const { priced, subTotal, gstAmount, cgstTotal, sgstTotal, igstTotal, totalAmount } =
+    await priceItems(companyId, items, { intraState, forceZeroTax });
 
   return prisma.$transaction(async (tx) => {
-    // 1. Validate Stock availability first
-    for (const item of items) {
-      const batch = await tx.batch.findUnique({ where: { id: item.batchId } });
+    // Validate stock availability up front so the whole sale fails cleanly.
+    for (const item of priced) {
+      const batch = await tx.batch.findFirst({ where: { id: item.batchId, companyId } });
       if (!batch) {
-        throw new Error(`Batch ID ${item.batchId} not found.`);
+        const err = new Error(`Batch ID ${item.batchId} not found.`);
+        err.status = 400;
+        throw err;
       }
       if (batch.currentQty < item.qty) {
-        throw new Error(`Insufficient stock in Batch ${batch.batchNumber}. Available: ${batch.currentQty}, Requested: ${item.qty}`);
+        const err = new Error(`Insufficient stock in Batch ${batch.batchNumber}. Available: ${batch.currentQty}, Requested: ${item.qty}`);
+        err.status = 400;
+        throw err;
       }
     }
 
-    // 2. Create Sale record
-    const sale = await tx.sale.create({
+    const company = await tx.company.findUnique({ where: { id: companyId }, select: { invoicePrefix: true } });
+    const fy = await getOrCreateFinancialYear(tx, companyId, saleDate);
+    const salesLedger = await getOrCreateSystemLedger(tx, companyId, 'Sales Ledger', 'Sales Accounts', 'INCOME');
+
+    const { voucherNumber, number } = await nextVoucherNumber(tx, { companyId, financialYear: fy, type: 'SALES' });
+    const invoiceNumber = formatInvoiceNumber(company.invoicePrefix, fy, number);
+
+    const voucher = await tx.voucher.create({
       data: {
-        customerId,
-        invoiceNumber,
-        saleDate: new Date(saleDate),
-        totalAmount,
-        status: 'UNPAID',
+        companyId,
+        voucherNumber,
+        type: 'SALES',
+        date: new Date(saleDate),
+        narration: `Sales Invoice: ${invoiceNumber}`,
+        partyId: customerId,
+        financialYearId: fy.id,
+        createdBy: createdBy || null,
       },
     });
 
-    // 3. Process items and decrement Batch inventory
-    for (const item of items) {
+    // Debit: Customer Ledger (total receivable)
+    await tx.voucherLine.create({ data: { voucherId: voucher.id, ledgerId: customer.ledgerId, type: 'DEBIT', amount: totalAmount } });
+    // Credit: Sales Ledger (taxable value) + Output GST
+    await tx.voucherLine.create({ data: { voucherId: voucher.id, ledgerId: salesLedger.id, type: 'CREDIT', amount: subTotal } });
+    await postGstLines(tx, { voucherId: voucher.id, companyId, cgstTotal, sgstTotal, igstTotal, direction: 'OUTPUT' });
+
+    const sale = await tx.sale.create({
+      data: {
+        companyId,
+        financialYearId: fy.id,
+        customerId,
+        invoiceNumber,
+        saleDate: new Date(saleDate),
+        subTotal,
+        gstAmount,
+        totalAmount,
+        status: 'UNPAID',
+        placeOfSupply: resolvedPlaceOfSupply,
+        supplyType: resolvedSupplyType,
+        voucherId: voucher.id,
+        createdBy: createdBy || null,
+      },
+    });
+
+    for (const item of priced) {
       await tx.saleItem.create({
         data: {
           saleId: sale.id,
           batchId: item.batchId,
           qty: item.qty,
           rate: item.rate,
-          gstAmount: item.gstAmount || 0,
+          gstAmount: item.gstAmount,
           amount: item.amount,
+          hsnCode: item.hsnCode,
+          taxableValue: item.taxableValue,
+          gstRate: item.gstRate,
+          cgstAmount: item.cgstAmount,
+          sgstAmount: item.sgstAmount,
+          igstAmount: item.igstAmount,
         },
       });
 
-      await tx.batch.update({
-        where: { id: item.batchId },
-        data: {
-          currentQty: {
-            decrement: item.qty,
-          },
-        },
+      await recordStockMovement(tx, {
+        companyId,
+        productId: item.batch.productId,
+        batchId: item.batchId,
+        movementType: 'OUT',
+        referenceType: 'SALE',
+        referenceId: sale.id,
+        qty: item.qty,
+        rate: item.rate,
       });
     }
-
-    // 4. Double-Entry Posting:
-    // Debit: Customer Ledger
-    // Credit: Sales Ledger
-    const fy = await getOrCreateFinancialYear(tx, saleDate);
-    const salesLedger = await getOrCreateSystemLedger(tx, 'Sales Ledger', 'Sales Accounts', 'INCOME');
-
-    const voucherNumber = `V-SALES-${sale.id.slice(0, 8)}-${invoiceNumber}`;
-
-    const voucher = await tx.voucher.create({
-      data: {
-        voucherNumber,
-        type: 'SALES',
-        date: new Date(saleDate),
-        narration: `Sales Invoice: ${invoiceNumber}`,
-        financialYearId: fy.id,
-      }
-    });
-
-    // Debit Line (Customer Ledger)
-    await tx.voucherLine.create({
-      data: {
-        voucherId: voucher.id,
-        ledgerId: customer.ledgerId,
-        type: 'DEBIT',
-        amount: totalAmount,
-      }
-    });
-
-    // Credit Line (Sales Ledger)
-    await tx.voucherLine.create({
-      data: {
-        voucherId: voucher.id,
-        ledgerId: salesLedger.id,
-        type: 'CREDIT',
-        amount: totalAmount,
-      }
-    });
 
     return tx.sale.findUnique({
       where: { id: sale.id },
       include: {
         customer: { select: { name: true } },
-        items: {
-          include: {
-            batch: { select: { batchNumber: true } },
-          },
-        },
+        items: { include: { batch: { select: { batchNumber: true } } } },
       },
     });
   });
 }
 
-export async function listSales() {
-  return prisma.sale.findMany({
-    include: { customer: { select: { name: true } } },
-    orderBy: { saleDate: 'desc' },
-  });
+export async function listSales({ companyId, status, page, limit }) {
+  const { take, skip, page: currentPage } = paginate({ page, limit });
+  const where = { companyId, ...(status ? { status } : {}) };
+
+  const [rows, total] = await Promise.all([
+    prisma.sale.findMany({
+      where,
+      include: { customer: { select: { name: true } } },
+      orderBy: { saleDate: 'desc' },
+      take,
+      skip,
+    }),
+    prisma.sale.count({ where }),
+  ]);
+
+  return paginatedResult({ rows, total, page: currentPage, limit: take });
 }
 
-export async function getSale(id) {
-  const sale = await prisma.sale.findUnique({
-    where: { id },
+export async function getSale(companyId, id) {
+  const sale = await prisma.sale.findFirst({
+    where: { id, companyId },
     include: {
       customer: true,
-      items: {
-        include: {
-          batch: {
-            include: { product: true },
-          },
-        },
-      },
+      items: { include: { batch: { include: { product: true } } } },
       payments: true,
     },
   });
@@ -332,21 +412,64 @@ export async function getSale(id) {
 // PAYMENTS
 // ============================================
 
-export async function createPayment({ partyId, saleId, amount, method, referenceNumber, paymentDate, notes, recordedById }) {
-  // Validate Party
-  const party = await prisma.party.findUnique({ where: { id: partyId } });
+export async function createPayment(companyId, { partyId, saleId, amount, method, referenceNumber, paymentDate, notes }, recordedById) {
+  const party = await prisma.party.findFirst({ where: { id: partyId, companyId } });
   if (!party) {
     const err = new Error('Party not found.');
     err.status = 400;
     throw err;
   }
 
+  if (saleId) {
+    const sale = await prisma.sale.findFirst({ where: { id: saleId, companyId } });
+    if (!sale) {
+      const err = new Error('Sale not found for this company.');
+      err.status = 400;
+      throw err;
+    }
+  }
+
   return prisma.$transaction(async (tx) => {
-    // 1. Create Payment record
+    const fy = await getOrCreateFinancialYear(tx, companyId, paymentDate);
+
+    const isReceipt = party.type === 'CUSTOMER' || party.type === 'BOTH';
+    const vType = isReceipt ? 'RECEIPT' : 'PAYMENT';
+
+    const isCash = method === 'CASH';
+    const cashBankLedgerName = isCash ? 'Cash' : 'Bank Account Ledger';
+    const cashBankGroupName = isCash ? 'Cash-in-Hand' : 'Bank Accounts';
+    const cashBankLedger = await getOrCreateSystemLedger(tx, companyId, cashBankLedgerName, cashBankGroupName, 'ASSET');
+
+    const { voucherNumber } = await nextVoucherNumber(tx, { companyId, financialYear: fy, type: vType });
+    const refText = referenceNumber ? ` Ref: ${referenceNumber}` : '';
+
+    const voucher = await tx.voucher.create({
+      data: {
+        companyId,
+        voucherNumber,
+        type: vType,
+        date: new Date(paymentDate),
+        narration: `${vType} ${isReceipt ? 'from' : 'to'} ${party.name}.${refText}`,
+        partyId,
+        financialYearId: fy.id,
+        createdBy: recordedById || null,
+      },
+    });
+
+    if (isReceipt) {
+      await tx.voucherLine.create({ data: { voucherId: voucher.id, ledgerId: cashBankLedger.id, type: 'DEBIT', amount } });
+      await tx.voucherLine.create({ data: { voucherId: voucher.id, ledgerId: party.ledgerId, type: 'CREDIT', amount } });
+    } else {
+      await tx.voucherLine.create({ data: { voucherId: voucher.id, ledgerId: party.ledgerId, type: 'DEBIT', amount } });
+      await tx.voucherLine.create({ data: { voucherId: voucher.id, ledgerId: cashBankLedger.id, type: 'CREDIT', amount } });
+    }
+
     const payment = await tx.payment.create({
       data: {
+        companyId,
         partyId,
         saleId: saleId || null,
+        voucherId: voucher.id,
         amount,
         method,
         referenceNumber: referenceNumber || null,
@@ -356,114 +479,46 @@ export async function createPayment({ partyId, saleId, amount, method, reference
       },
     });
 
-    // 2. If payment is linked to a sale, update sale payment status
     if (saleId) {
-      const sale = await tx.sale.findUnique({
-        where: { id: saleId },
-        include: { payments: true },
-      });
+      const sale = await tx.sale.findUnique({ where: { id: saleId }, include: { payments: true } });
+      const totalPaid = sale.payments.reduce((sum, p) => sum + Number(p.amount), 0) + Number(amount);
+      const saleTotal = Number(sale.totalAmount);
 
-      if (sale) {
-        // Sum all payments for this sale (including the new one)
-        const totalPaid = sale.payments.reduce((sum, p) => sum + Number(p.amount), 0) + Number(amount);
-        const saleTotal = Number(sale.totalAmount);
+      let newStatus = 'UNPAID';
+      if (totalPaid >= saleTotal) newStatus = 'PAID';
+      else if (totalPaid > 0) newStatus = 'PARTIALLY_PAID';
 
-        let newStatus = 'UNPAID';
-        if (totalPaid >= saleTotal) {
-          newStatus = 'PAID';
-        } else if (totalPaid > 0) {
-          newStatus = 'PARTIALLY_PAID';
-        }
-
-        await tx.sale.update({
-          where: { id: saleId },
-          data: { status: newStatus },
-        });
-      }
-    }
-
-    // 3. Double-Entry Posting:
-    // Determine if Receipt (we receive money from Customer) or Payment (we pay Supplier)
-    const isReceipt = party.type === 'CUSTOMER' || party.type === 'BOTH';
-    const vType = isReceipt ? 'RECEIPT' : 'PAYMENT';
-
-    // Get Cash/Bank Ledger
-    const isCash = method === 'CASH';
-    const cashBankLedgerName = isCash ? 'Cash-in-Hand Ledger' : 'Bank Account Ledger';
-    const cashBankGroupName = isCash ? 'Cash-in-Hand' : 'Bank Accounts';
-    const cashBankLedger = await getOrCreateSystemLedger(tx, cashBankLedgerName, cashBankGroupName, 'ASSET');
-
-    const fy = await getOrCreateFinancialYear(tx, paymentDate);
-    const refText = referenceNumber ? ` Ref: ${referenceNumber}` : '';
-    const voucherNumber = `V-${vType.slice(0, 3)}-${payment.id.slice(0, 8)}`;
-
-    const voucher = await tx.voucher.create({
-      data: {
-        voucherNumber,
-        type: vType,
-        date: new Date(paymentDate),
-        narration: `${vType} from Party: ${party.name}.${refText}`,
-        financialYearId: fy.id,
-      }
-    });
-
-    if (isReceipt) {
-      // Debit: Cash/Bank Ledger
-      await tx.voucherLine.create({
-        data: {
-          voucherId: voucher.id,
-          ledgerId: cashBankLedger.id,
-          type: 'DEBIT',
-          amount,
-        }
-      });
-      // Credit: Customer Ledger
-      await tx.voucherLine.create({
-        data: {
-          voucherId: voucher.id,
-          ledgerId: party.ledgerId,
-          type: 'CREDIT',
-          amount,
-        }
-      });
-    } else {
-      // Debit: Supplier Ledger
-      await tx.voucherLine.create({
-        data: {
-          voucherId: voucher.id,
-          ledgerId: party.ledgerId,
-          type: 'DEBIT',
-          amount,
-        }
-      });
-      // Credit: Cash/Bank Ledger
-      await tx.voucherLine.create({
-        data: {
-          voucherId: voucher.id,
-          ledgerId: cashBankLedger.id,
-          type: 'CREDIT',
-          amount,
-        }
-      });
+      await tx.sale.update({ where: { id: saleId }, data: { status: newStatus } });
     }
 
     return payment;
   });
 }
 
-export async function listPayments() {
-  return prisma.payment.findMany({
-    include: {
-      party: { select: { name: true, type: true } },
-      sale: { select: { invoiceNumber: true } },
-    },
-    orderBy: { paymentDate: 'desc' },
-  });
+export async function listPayments({ companyId, page, limit }) {
+  const { take, skip, page: currentPage } = paginate({ page, limit });
+  const where = { companyId };
+
+  const [rows, total] = await Promise.all([
+    prisma.payment.findMany({
+      where,
+      include: {
+        party: { select: { name: true, type: true } },
+        sale: { select: { invoiceNumber: true } },
+      },
+      orderBy: { paymentDate: 'desc' },
+      take,
+      skip,
+    }),
+    prisma.payment.count({ where }),
+  ]);
+
+  return paginatedResult({ rows, total, page: currentPage, limit: take });
 }
 
-export async function getPayment(id) {
-  const payment = await prisma.payment.findUnique({
-    where: { id },
+export async function getPayment(companyId, id) {
+  const payment = await prisma.payment.findFirst({
+    where: { id, companyId },
     include: {
       party: true,
       sale: true,
@@ -478,18 +533,12 @@ export async function getPayment(id) {
   return payment;
 }
 
-export async function getLastSale(customerId) {
+export async function getLastSale(companyId, customerId) {
   return prisma.sale.findFirst({
-    where: { customerId },
+    where: { companyId, customerId },
     orderBy: { saleDate: 'desc' },
     include: {
-      items: {
-        include: {
-          batch: {
-            include: { product: true },
-          },
-        },
-      },
+      items: { include: { batch: { include: { product: true } } } },
     },
   });
 }

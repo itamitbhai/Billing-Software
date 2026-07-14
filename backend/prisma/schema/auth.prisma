@@ -1,32 +1,89 @@
 // ============================================
-// auth.prisma - Auth & Company Settings
+// auth.prisma - Companies, Users, Sessions, Audit Log
 // ============================================
 
-model CompanySettings {
+model Company {
   id            String   @id @default(uuid())
-  companyName   String
-  gstin         String
+  name          String
+  gstin         String?
+  pan           String?
   state         String
   address       String?
   phone         String?
-  email         String?
+  email         String?  @unique
+  invoicePrefix String   @default("INV")
   bankName      String?
   accountNo     String?
   ifscCode      String?
-  invoicePrefix String   @default("INV")
+  isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  users              User[]
+  parties            Party[]
+  products           Product[]
+  costCentres        CostCentre[]
+  ledgerGroups       LedgerGroup[]
+  ledgers            Ledger[]
+  financialYears     FinancialYear[]
+  voucherSequences   VoucherSequence[]
+  vouchers           Voucher[]
+  purchases          Purchase[]
+  sales              Sale[]
+  payments           Payment[]
+  stockLedgerEntries StockLedgerEntry[]
+  bankAccounts       BankAccount[]
+  auditLogs          AuditLog[]
 }
 
 model User {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
+  companyId    String
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name         String
-  email        String   @unique
+  email        String    @unique
   passwordHash String
-  role         Role     @default(STAFF)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  role         Role      @default(STAFF)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  payments     Payment[] @relation("RecordedBy")
+  sessions  Session[]
+  payments  Payment[]  @relation("RecordedBy")
+  auditLogs AuditLog[]
+
+  @@index([companyId])
+}
+
+model Session {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshTokenHash String   @unique
+  userAgent        String?
+  ipAddress        String?
+  isRevoked        Boolean  @default(false)
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  companyId  String?
+  company    Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([companyId])
+  @@index([userId])
+  @@index([entityType, entityId])
 }

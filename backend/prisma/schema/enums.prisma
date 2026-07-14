@@ -52,3 +52,26 @@ enum VoucherType {
   CREDIT_NOTE
   DEBIT_NOTE
 }
+
+enum StockMovementType {
+  IN
+  OUT
+}
+
+enum StockReferenceType {
+  PURCHASE
+  SALE
+  PURCHASE_RETURN
+  SALE_RETURN
+  ADJUSTMENT
+  OPENING
+}
+
+enum SupplyType {
+  TAXABLE
+  ZERO_RATED_EXPORT
+  ZERO_RATED_SEZ
+  EXEMPT
+  NIL_RATED
+  NON_GST
+}

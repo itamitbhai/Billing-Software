@@ -15,5 +15,8 @@ reportsRouter.get('/outstanding/receivables',  reportsController.getOutstandingR
 reportsRouter.get('/outstanding/payables',     reportsController.getOutstandingPayables);    // ?asOfDate=
 reportsRouter.get('/cash-flow',                reportsController.getCashFlow);             // ?startDate=&endDate=
 reportsRouter.get('/ledger/:ledgerId',         reportsController.getLedgerStatement);      // ?startDate=&endDate=
+reportsRouter.get('/gst/summary',              reportsController.getGstSummary);           // ?startDate=&endDate= — net GST payable
+reportsRouter.get('/gst/gstr1',                reportsController.getGstr1);                // ?month=&year= — outward supply return
+reportsRouter.get('/gst/gstr3b',               reportsController.getGstr3b);               // ?month=&year= — summary return
 
 export { reportsRouter };

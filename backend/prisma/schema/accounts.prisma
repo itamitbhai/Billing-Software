@@ -3,29 +3,43 @@
 // ============================================
 
 model LedgerGroup {
-  id        String       @id @default(uuid())
-  name      String       @unique
+  id        String        @id @default(uuid())
+  companyId String
+  company   Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
   nature    LedgerNature
+  isSystem  Boolean       @default(false)
   parentId  String?
-  parent    LedgerGroup? @relation("GroupHierarchy", fields: [parentId], references: [id])
+  parent    LedgerGroup?  @relation("GroupHierarchy", fields: [parentId], references: [id])
   children  LedgerGroup[] @relation("GroupHierarchy")
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
 
-  ledgers   Ledger[]
+  ledgers Ledger[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
 }
 
 model Ledger {
   id                 String      @id @default(uuid())
-  name               String      @unique
+  companyId          String
+  company            Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name               String
   groupId            String
   group              LedgerGroup @relation(fields: [groupId], references: [id])
-  openingBalance     Decimal     @db.Decimal(12, 2) @default(0)
+  openingBalance     Decimal     @default(0) @db.Decimal(14, 2)
   openingBalanceType EntryType   @default(DEBIT)
   description        String?
+  isSystem           Boolean     @default(false)
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
 
-  party              Party?
-  voucherLines       VoucherLine[]
+  party        Party?
+  bankAccount  BankAccount?
+  voucherLines VoucherLine[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@index([groupId])
 }

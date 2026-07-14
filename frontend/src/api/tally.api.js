@@ -84,7 +84,10 @@ export const tallyApi = {
     receivables: (params) => apiClient.get('/reports/outstanding/receivables', { params }).then(r => r.data),
     payables: (params) => apiClient.get('/reports/outstanding/payables', { params }).then(r => r.data),
     cashFlow: (params) => apiClient.get('/reports/cash-flow', { params }).then(r => r.data),
-    ledgerStatement: (ledgerId, params) => apiClient.get(`/reports/ledger/${ledgerId}`, { params }).then(r => r.data)
+    ledgerStatement: (ledgerId, params) => apiClient.get(`/reports/ledger/${ledgerId}`, { params }).then(r => r.data),
+    gstSummary: (params) => apiClient.get('/reports/gst/summary', { params }).then(r => r.data),
+    gstr1: (params) => apiClient.get('/reports/gst/gstr1', { params }).then(r => r.data),
+    gstr3b: (params) => apiClient.get('/reports/gst/gstr3b', { params }).then(r => r.data)
   },
 
   // ── Utilities ─────────────────────────────────────────────

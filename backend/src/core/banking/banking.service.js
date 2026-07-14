@@ -2,17 +2,19 @@
  * banking.service.js
  * Bank accounts, statements, and reconciliation.
  */
+import { Decimal } from '@prisma/client/runtime/library';
+import { prisma } from '../../shared/database/prisma.js';
 
-export async function listBankAccounts({ tenantPrisma, companyId }) {
-  return tenantPrisma.bankAccount.findMany({
+export async function listBankAccounts({ companyId }) {
+  return prisma.bankAccount.findMany({
     where: { companyId },
     include: { ledger: { select: { id: true, name: true } } },
     orderBy: { name: 'asc' },
   });
 }
 
-export async function getBankAccount({ tenantPrisma, id, companyId }) {
-  const account = await tenantPrisma.bankAccount.findFirst({
+export async function getBankAccount({ id, companyId }) {
+  const account = await prisma.bankAccount.findFirst({
     where: { id, companyId },
     include: { ledger: { select: { id: true, name: true } } },
   });
@@ -20,9 +22,8 @@ export async function getBankAccount({ tenantPrisma, id, companyId }) {
   return account;
 }
 
-export async function createBankAccount({ tenantPrisma, companyId, name, ledgerId, bankName, accountNumber, ifsc, branch, openingBalance }) {
-  // Verify ledger exists and belongs to "Bank Accounts" group
-  const ledger = await tenantPrisma.ledger.findFirst({
+export async function createBankAccount({ companyId, name, ledgerId, bankName, accountNumber, ifsc, branch, openingBalance }) {
+  const ledger = await prisma.ledger.findFirst({
     where: { id: ledgerId, companyId },
     include: { group: true },
   });
@@ -33,32 +34,31 @@ export async function createBankAccount({ tenantPrisma, companyId, name, ledgerI
     throw err;
   }
 
-  const dup = await tenantPrisma.bankAccount.findFirst({ where: { accountNumber, companyId } });
+  const dup = await prisma.bankAccount.findUnique({ where: { companyId_accountNumber: { companyId, accountNumber } } });
   if (dup) { const err = new Error('A bank account with this account number already exists.'); err.status = 400; throw err; }
 
-  return tenantPrisma.bankAccount.create({
+  return prisma.bankAccount.create({
     data: {
-      name, ledgerId, bankName, accountNumber,
-      ifsc:           ifsc    || null,
-      branch:         branch  || null,
-      openingBalance: BigInt(openingBalance || 0),
-      companyId,
+      companyId, name, ledgerId, bankName, accountNumber,
+      ifsc: ifsc || null,
+      branch: branch || null,
+      openingBalance: openingBalance || 0,
     },
     include: { ledger: { select: { id: true, name: true } } },
   });
 }
 
-export async function updateBankAccount({ tenantPrisma, id, companyId, name, bankName, ifsc, branch, openingBalance }) {
-  const account = await tenantPrisma.bankAccount.findFirst({ where: { id, companyId } });
+export async function updateBankAccount({ id, companyId, name, bankName, ifsc, branch, openingBalance }) {
+  const account = await prisma.bankAccount.findFirst({ where: { id, companyId } });
   if (!account) { const err = new Error('Bank account not found.'); err.status = 404; throw err; }
-  return tenantPrisma.bankAccount.update({
+  return prisma.bankAccount.update({
     where: { id },
     data: {
-      name:           name           ?? account.name,
-      bankName:       bankName       ?? account.bankName,
-      ifsc:           ifsc           ?? account.ifsc,
-      branch:         branch         ?? account.branch,
-      openingBalance: openingBalance !== undefined ? BigInt(openingBalance) : account.openingBalance,
+      name: name ?? account.name,
+      bankName: bankName ?? account.bankName,
+      ifsc: ifsc ?? account.ifsc,
+      branch: branch ?? account.branch,
+      openingBalance: openingBalance !== undefined ? openingBalance : account.openingBalance,
     },
   });
 }
@@ -67,26 +67,23 @@ export async function updateBankAccount({ tenantPrisma, id, companyId, name, ban
  * Bank Statement — all voucher lines linked to a ledger within a date range.
  * Returns a running balance for each transaction.
  */
-export async function getBankStatement({ tenantPrisma, bankAccountId, companyId, startDate, endDate }) {
-  const account = await tenantPrisma.bankAccount.findFirst({ where: { id: bankAccountId, companyId } });
+export async function getBankStatement({ bankAccountId, companyId, startDate, endDate }) {
+  const account = await prisma.bankAccount.findFirst({ where: { id: bankAccountId, companyId } });
   if (!account) { const err = new Error('Bank account not found.'); err.status = 404; throw err; }
 
-  const where = {
-    ledgerId: account.ledgerId,
-    voucher: { isDeleted: false },
-    ...(startDate || endDate ? {
+  const lines = await prisma.voucherLine.findMany({
+    where: {
+      ledgerId: account.ledgerId,
       voucher: {
         isDeleted: false,
-        date: {
-          ...(startDate ? { gte: new Date(startDate) } : {}),
-          ...(endDate   ? { lte: new Date(endDate)   } : {}),
-        },
+        ...(startDate || endDate ? {
+          date: {
+            ...(startDate ? { gte: new Date(startDate) } : {}),
+            ...(endDate ? { lte: new Date(endDate) } : {}),
+          },
+        } : {}),
       },
-    } : {}),
-  };
-
-  const lines = await tenantPrisma.voucherLine.findMany({
-    where,
+    },
     include: {
       voucher: { select: { id: true, voucherNumber: true, type: true, date: true, narration: true, party: { select: { name: true } } } },
       reconciliation: { select: { isReconciled: true, statementDate: true } },
@@ -94,35 +91,33 @@ export async function getBankStatement({ tenantPrisma, bankAccountId, companyId,
     orderBy: { voucher: { date: 'asc' } },
   });
 
-  // Compute running balance (opening balance + transactions)
-  let balance = account.openingBalance;
+  // For a Bank Account (ASSET): DEBIT increases, CREDIT decreases
+  let balance = new Decimal(account.openingBalance);
   const statement = lines.map((line) => {
-    // For a Bank Account (ASSET): DEBIT increases, CREDIT decreases
-    if (line.type === 'DEBIT')  balance += line.amount;
-    else                        balance -= line.amount;
-    return { ...line, runningBalance: balance };
+    balance = line.type === 'DEBIT' ? balance.add(line.amount) : balance.sub(line.amount);
+    return { ...line, runningBalance: balance.toFixed(2) };
   });
 
   return {
-    bankAccount:    account,
-    openingBalance: account.openingBalance,
-    closingBalance: balance,
-    transactions:   statement,
+    bankAccount: account,
+    openingBalance: account.openingBalance.toString(),
+    closingBalance: balance.toFixed(2),
+    transactions: statement,
   };
 }
 
 /**
  * Get unreconciled voucher lines for a bank account.
  */
-export async function getPendingReconciliation({ tenantPrisma, bankAccountId, companyId }) {
-  const account = await tenantPrisma.bankAccount.findFirst({ where: { id: bankAccountId, companyId } });
+export async function getPendingReconciliation({ bankAccountId, companyId }) {
+  const account = await prisma.bankAccount.findFirst({ where: { id: bankAccountId, companyId } });
   if (!account) { const err = new Error('Bank account not found.'); err.status = 404; throw err; }
 
-  const lines = await tenantPrisma.voucherLine.findMany({
+  const lines = await prisma.voucherLine.findMany({
     where: {
-      ledgerId:       account.ledgerId,
-      voucher:        { isDeleted: false },
-      reconciliation: { is: null },   // not yet in reconciliation table
+      ledgerId: account.ledgerId,
+      voucher: { isDeleted: false },
+      reconciliation: { is: null },
     },
     include: {
       voucher: { select: { id: true, voucherNumber: true, type: true, date: true, narration: true } },
@@ -136,28 +131,27 @@ export async function getPendingReconciliation({ tenantPrisma, bankAccountId, co
 /**
  * Mark a voucher line as reconciled with a bank statement entry.
  */
-export async function reconcileEntry({ tenantPrisma, bankAccountId, companyId, voucherLineId, statementDate, statementAmount }) {
-  const account = await tenantPrisma.bankAccount.findFirst({ where: { id: bankAccountId, companyId } });
+export async function reconcileEntry({ bankAccountId, companyId, voucherLineId, statementDate, statementAmount }) {
+  const account = await prisma.bankAccount.findFirst({ where: { id: bankAccountId, companyId } });
   if (!account) { const err = new Error('Bank account not found.'); err.status = 404; throw err; }
 
-  const line = await tenantPrisma.voucherLine.findFirst({ where: { id: voucherLineId, ledgerId: account.ledgerId } });
+  const line = await prisma.voucherLine.findFirst({ where: { id: voucherLineId, ledgerId: account.ledgerId } });
   if (!line) { const err = new Error('Voucher line not found or does not belong to this bank account.'); err.status = 404; throw err; }
 
-  // Upsert reconciliation entry
-  return tenantPrisma.bankReconciliation.upsert({
-    where:  { voucherLineId },
+  return prisma.bankReconciliation.upsert({
+    where: { voucherLineId },
     create: {
-      bankAccountId, voucherLineId, companyId,
-      statementDate:   statementDate ? new Date(statementDate) : null,
-      statementAmount: statementAmount ? BigInt(statementAmount) : null,
-      isReconciled:    true,
-      reconciledAt:    new Date(),
+      companyId, bankAccountId, voucherLineId,
+      statementDate: statementDate ? new Date(statementDate) : null,
+      statementAmount: statementAmount ?? null,
+      isReconciled: true,
+      reconciledAt: new Date(),
     },
     update: {
-      statementDate:   statementDate ? new Date(statementDate) : null,
-      statementAmount: statementAmount ? BigInt(statementAmount) : null,
-      isReconciled:    true,
-      reconciledAt:    new Date(),
+      statementDate: statementDate ? new Date(statementDate) : null,
+      statementAmount: statementAmount ?? null,
+      isReconciled: true,
+      reconciledAt: new Date(),
     },
   });
 }
@@ -165,16 +159,16 @@ export async function reconcileEntry({ tenantPrisma, bankAccountId, companyId, v
 /**
  * Cheque register — PAYMENT/RECEIPT vouchers within a date range.
  */
-export async function getChequeRegister({ tenantPrisma, companyId, startDate, endDate }) {
-  return tenantPrisma.voucher.findMany({
+export async function getChequeRegister({ companyId, startDate, endDate }) {
+  return prisma.voucher.findMany({
     where: {
       companyId,
       isDeleted: false,
-      type:      { in: ['PAYMENT', 'RECEIPT'] },
+      type: { in: ['PAYMENT', 'RECEIPT'] },
       ...(startDate || endDate ? {
         date: {
           ...(startDate ? { gte: new Date(startDate) } : {}),
-          ...(endDate   ? { lte: new Date(endDate)   } : {}),
+          ...(endDate ? { lte: new Date(endDate) } : {}),
         },
       } : {}),
     },

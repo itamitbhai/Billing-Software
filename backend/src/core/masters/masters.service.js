@@ -1,21 +1,30 @@
 import { prisma } from '../../shared/database/prisma.js';
+import { paginate, paginatedResult } from '../../shared/utils/pagination.js';
 
 // ============================================
 // PARTIES
 // ============================================
 
-export async function listParties({ type }) {
-  return prisma.party.findMany({
-    where: type ? { type } : {},
-    include: { ledger: true },
-    orderBy: { name: 'asc' },
-  });
+export async function listParties({ companyId, type, page, limit }) {
+  const { take, skip } = paginate({ page, limit });
+  const where = { companyId, ...(type ? { type } : {}) };
+
+  const [rows, total] = await Promise.all([
+    prisma.party.findMany({
+      where,
+      include: { ledger: true },
+      orderBy: { name: 'asc' },
+      take,
+      skip,
+    }),
+    prisma.party.count({ where }),
+  ]);
+
+  return paginatedResult({ rows, total, page: paginate({ page, limit }).page, limit: take });
 }
 
-export async function getParty(id) {
-  const party = await prisma.party.findUnique({
-    where: { id },
-  });
+export async function getParty(companyId, id) {
+  const party = await prisma.party.findFirst({ where: { id, companyId } });
   if (!party) {
     const err = new Error('Party not found.');
     err.status = 404;
@@ -24,23 +33,25 @@ export async function getParty(id) {
   return party;
 }
 
-export async function createParty(data) {
+async function getOrCreateGroup(tx, companyId, name, nature) {
+  let group = await tx.ledgerGroup.findUnique({ where: { companyId_name: { companyId, name } } });
+  if (!group) {
+    group = await tx.ledgerGroup.create({ data: { companyId, name, nature, isSystem: true } });
+  }
+  return group;
+}
+
+export async function createParty(companyId, data) {
   const groupName = data.type === 'SUPPLIER' ? 'Sundry Creditors' : 'Sundry Debtors';
   const nature = data.type === 'SUPPLIER' ? 'LIABILITY' : 'ASSET';
   const balanceType = data.type === 'SUPPLIER' ? 'CREDIT' : 'DEBIT';
 
   return prisma.$transaction(async (tx) => {
-    // 1. Resolve or create Ledger Group
-    let group = await tx.ledgerGroup.findUnique({ where: { name: groupName } });
-    if (!group) {
-      group = await tx.ledgerGroup.create({
-        data: { name: groupName, nature },
-      });
-    }
+    const group = await getOrCreateGroup(tx, companyId, groupName, nature);
 
-    // 2. Create Backing Ledger
     const ledger = await tx.ledger.create({
       data: {
+        companyId,
         name: `${data.name} Ledger`,
         groupId: group.id,
         openingBalance: data.openingBalance || 0,
@@ -48,16 +59,19 @@ export async function createParty(data) {
       },
     });
 
-    // 3. Create Party
     return tx.party.create({
       data: {
+        companyId,
         externalId: data.externalId || null,
         name: data.name,
         gstin: data.gstin || null,
+        pan: data.pan || null,
         phone: data.phone || null,
         email: data.email || null,
         address: data.address || null,
+        city: data.city || null,
         state: data.state || null,
+        pincode: data.pincode || null,
         type: data.type || 'CUSTOMER',
         creditLimit: data.creditLimit || null,
         creditPeriodDays: data.creditPeriodDays || 30,
@@ -68,8 +82,8 @@ export async function createParty(data) {
   });
 }
 
-export async function updateParty(id, data) {
-  const party = await prisma.party.findUnique({ where: { id } });
+export async function updateParty(companyId, id, data) {
+  const party = await prisma.party.findFirst({ where: { id, companyId } });
   if (!party) {
     const err = new Error('Party not found.');
     err.status = 404;
@@ -77,7 +91,6 @@ export async function updateParty(id, data) {
   }
 
   return prisma.$transaction(async (tx) => {
-    // Sync ledger name if party name changes
     if (data.name && data.name !== party.name) {
       await tx.ledger.update({
         where: { id: party.ledgerId },
@@ -91,21 +104,25 @@ export async function updateParty(id, data) {
         externalId: data.externalId !== undefined ? data.externalId : undefined,
         name: data.name,
         gstin: data.gstin,
+        pan: data.pan,
         phone: data.phone,
         email: data.email,
         address: data.address,
+        city: data.city,
         state: data.state,
+        pincode: data.pincode,
         type: data.type,
         creditLimit: data.creditLimit,
         creditPeriodDays: data.creditPeriodDays,
         openingBalance: data.openingBalance,
+        isActive: data.isActive,
       },
     });
   });
 }
 
-export async function deleteParty(id) {
-  const party = await prisma.party.findUnique({ where: { id } });
+export async function deleteParty(companyId, id) {
+  const party = await prisma.party.findFirst({ where: { id, companyId } });
   if (!party) {
     const err = new Error('Party not found.');
     err.status = 404;
@@ -113,9 +130,7 @@ export async function deleteParty(id) {
   }
 
   return prisma.$transaction(async (tx) => {
-    // Delete Party first
     const deleted = await tx.party.delete({ where: { id } });
-    // Delete backing Ledger
     await tx.ledger.delete({ where: { id: party.ledgerId } });
     return deleted;
   });
@@ -125,15 +140,21 @@ export async function deleteParty(id) {
 // PRODUCTS
 // ============================================
 
-export async function listProducts() {
-  return prisma.product.findMany({
-    orderBy: { name: 'asc' },
-  });
+export async function listProducts({ companyId, page, limit }) {
+  const { take, skip, page: currentPage } = paginate({ page, limit });
+  const where = { companyId };
+
+  const [rows, total] = await Promise.all([
+    prisma.product.findMany({ where, orderBy: { name: 'asc' }, take, skip }),
+    prisma.product.count({ where }),
+  ]);
+
+  return paginatedResult({ rows, total, page: currentPage, limit: take });
 }
 
-export async function getProduct(id) {
-  const product = await prisma.product.findUnique({
-    where: { id },
+export async function getProduct(companyId, id) {
+  const product = await prisma.product.findFirst({
+    where: { id, companyId },
     include: { batches: true },
   });
   if (!product) {
@@ -144,11 +165,13 @@ export async function getProduct(id) {
   return product;
 }
 
-export async function createProduct(data) {
+export async function createProduct(companyId, data) {
   return prisma.product.create({
     data: {
+      companyId,
       externalId: data.externalId || null,
       name: data.name,
+      sku: data.sku || null,
       type: data.type || null,
       price: data.price,
       unit: data.unit || 'PCS',
@@ -159,43 +182,45 @@ export async function createProduct(data) {
   });
 }
 
-export async function updateProduct(id, data) {
+export async function updateProduct(companyId, id, data) {
+  await getProduct(companyId, id);
   return prisma.product.update({
     where: { id },
     data: {
       externalId: data.externalId !== undefined ? data.externalId : undefined,
       name: data.name,
+      sku: data.sku,
       type: data.type,
       price: data.price,
       unit: data.unit,
       hsnCode: data.hsnCode,
       gstRate: data.gstRate,
       reorderLevel: data.reorderLevel,
+      isActive: data.isActive,
     },
   });
 }
 
-export async function deleteProduct(id) {
-  return prisma.product.delete({
-    where: { id },
-  });
+export async function deleteProduct(companyId, id) {
+  await getProduct(companyId, id);
+  return prisma.product.delete({ where: { id } });
 }
 
 // ============================================
 // BATCHES
 // ============================================
 
-export async function listBatches({ productId }) {
+export async function listBatches({ companyId, productId }) {
   return prisma.batch.findMany({
-    where: productId ? { productId } : {},
+    where: { companyId, ...(productId ? { productId } : {}) },
     include: { product: { select: { name: true, type: true } } },
     orderBy: { expiryDate: 'asc' },
   });
 }
 
-export async function getBatch(id) {
-  const batch = await prisma.batch.findUnique({
-    where: { id },
+export async function getBatch(companyId, id) {
+  const batch = await prisma.batch.findFirst({
+    where: { id, companyId },
     include: { product: true },
   });
   if (!batch) {
@@ -206,9 +231,17 @@ export async function getBatch(id) {
   return batch;
 }
 
-export async function createBatch(data) {
+export async function createBatch(companyId, data) {
+  const product = await prisma.product.findFirst({ where: { id: data.productId, companyId } });
+  if (!product) {
+    const err = new Error('Product not found.');
+    err.status = 404;
+    throw err;
+  }
+
   return prisma.batch.create({
     data: {
+      companyId,
       productId: data.productId,
       batchNumber: data.batchNumber,
       expiryDate: new Date(data.expiryDate),
@@ -218,11 +251,11 @@ export async function createBatch(data) {
   });
 }
 
-export async function updateBatch(id, data) {
+export async function updateBatch(companyId, id, data) {
+  await getBatch(companyId, id);
   return prisma.batch.update({
     where: { id },
     data: {
-      productId: data.productId,
       batchNumber: data.batchNumber,
       expiryDate: data.expiryDate ? new Date(data.expiryDate) : undefined,
       mrp: data.mrp,
@@ -231,13 +264,33 @@ export async function updateBatch(id, data) {
   });
 }
 
-export async function deleteBatch(id) {
-  return prisma.batch.delete({
-    where: { id },
+export async function deleteBatch(companyId, id) {
+  await getBatch(companyId, id);
+  return prisma.batch.delete({ where: { id } });
+}
+
+// ============================================
+// COST CENTRES
+// ============================================
+
+export async function listCostCentres(companyId) {
+  return prisma.costCentre.findMany({
+    where: { companyId },
+    orderBy: { name: 'asc' },
   });
 }
 
-export async function syncFromVsArogya() {
+export async function createCostCentre(companyId, { name, parentId }) {
+  return prisma.costCentre.create({
+    data: { companyId, name, parentId: parentId || null },
+  });
+}
+
+// ============================================
+// SYNC (external VS Arogya integration)
+// ============================================
+
+export async function syncFromVsArogya(companyId) {
   const apiUrl = process.env.VS_AROGYA_API_URL;
   const apiKey = process.env.VS_AROGYA_API_KEY;
 
@@ -246,21 +299,19 @@ export async function syncFromVsArogya() {
 
   if (apiUrl) {
     try {
-      // 1. Fetch Parties
       const partiesRes = await fetch(`${apiUrl}/api/sync/parties`, {
         headers: { 'Authorization': `Bearer ${apiKey}` }
       });
       if (partiesRes.ok) {
-        const json = await partiesRes.ok ? await partiesRes.json() : {};
+        const json = await partiesRes.json();
         externalParties = json.data || [];
       }
 
-      // 2. Fetch Products
       const productsRes = await fetch(`${apiUrl}/api/sync/products`, {
         headers: { 'Authorization': `Bearer ${apiKey}` }
       });
       if (productsRes.ok) {
-        const json = await productsRes.ok ? await productsRes.json() : {};
+        const json = await productsRes.json();
         externalProducts = json.data || [];
       }
     } catch (error) {
@@ -322,49 +373,45 @@ export async function syncFromVsArogya() {
     ];
   }
 
-  // 3. Upsert synced Parties
   let syncedPartiesCount = 0;
   for (const party of externalParties) {
     if (!party.externalId || !party.name) continue;
 
-    await prisma.party.upsert({
-      where: { externalId: party.externalId },
-      update: {
-        name: party.name,
-        gstin: party.gstin,
-        phone: party.phone,
-        email: party.email,
-        address: party.address,
-        state: party.state,
-        type: party.type || 'CUSTOMER',
-        creditLimit: party.creditLimit,
-        creditPeriodDays: party.creditPeriodDays,
-        openingBalance: party.openingBalance,
-      },
-      create: {
-        externalId: party.externalId,
-        name: party.name,
-        gstin: party.gstin,
-        phone: party.phone,
-        email: party.email,
-        address: party.address,
-        state: party.state,
-        type: party.type || 'CUSTOMER',
-        creditLimit: party.creditLimit,
-        creditPeriodDays: party.creditPeriodDays,
-        openingBalance: party.openingBalance || 0,
-      }
+    const existing = await prisma.party.findUnique({
+      where: { companyId_externalId: { companyId, externalId: party.externalId } },
     });
+
+    if (existing) {
+      await prisma.party.update({
+        where: { id: existing.id },
+        data: {
+          name: party.name,
+          gstin: party.gstin,
+          phone: party.phone,
+          email: party.email,
+          address: party.address,
+          state: party.state,
+          type: party.type || 'CUSTOMER',
+          creditLimit: party.creditLimit,
+          creditPeriodDays: party.creditPeriodDays,
+          lastSyncedAt: new Date(),
+        },
+      });
+    } else {
+      await createParty(companyId, {
+        ...party,
+        openingBalance: party.openingBalance || 0,
+      });
+    }
     syncedPartiesCount++;
   }
 
-  // 4. Upsert synced Products
   let syncedProductsCount = 0;
   for (const prod of externalProducts) {
     if (!prod.externalId || !prod.name) continue;
 
     await prisma.product.upsert({
-      where: { externalId: prod.externalId },
+      where: { companyId_externalId: { companyId, externalId: prod.externalId } },
       update: {
         name: prod.name,
         type: prod.type,
@@ -373,8 +420,10 @@ export async function syncFromVsArogya() {
         hsnCode: prod.hsnCode,
         gstRate: prod.gstRate,
         reorderLevel: prod.reorderLevel,
+        lastSyncedAt: new Date(),
       },
       create: {
+        companyId,
         externalId: prod.externalId,
         name: prod.name,
         type: prod.type,

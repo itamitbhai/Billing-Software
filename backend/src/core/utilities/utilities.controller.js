@@ -6,14 +6,14 @@ import * as utilitiesService from './utilities.service.js';
 
 export async function getCompanyProfile(req, res, next) {
   try {
-    const company = await utilitiesService.getCompanyProfile();
+    const company = await utilitiesService.getCompanyProfile(req.user.companyId);
     res.json({ success: true, data: company });
   } catch (err) { next(err); }
 }
 
 export async function updateCompanyProfile(req, res, next) {
   try {
-    const company = await utilitiesService.updateCompanyProfile(req.body);
+    const company = await utilitiesService.updateCompanyProfile(req.user.companyId, req.body);
     res.json({ success: true, message: 'Company profile updated successfully.', data: company });
   } catch (err) { next(err); }
 }
@@ -24,7 +24,7 @@ export async function updateCompanyProfile(req, res, next) {
 
 export async function getSystemStats(req, res, next) {
   try {
-    const stats = await utilitiesService.getSystemStats();
+    const stats = await utilitiesService.getSystemStats(req.user.companyId);
     res.json({ success: true, data: stats });
   } catch (err) { next(err); }
 }

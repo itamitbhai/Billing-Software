@@ -4,8 +4,9 @@ import { prisma } from '../../shared/database/prisma.js';
 // LEDGER GROUPS
 // ============================================
 
-export async function listGroups() {
+export async function listGroups(companyId) {
   return prisma.ledgerGroup.findMany({
+    where: { companyId },
     include: {
       parent: { select: { id: true, name: true } },
       children: { select: { id: true, name: true, nature: true } },
@@ -15,9 +16,9 @@ export async function listGroups() {
   });
 }
 
-export async function getGroup(id) {
-  const group = await prisma.ledgerGroup.findUnique({
-    where: { id },
+export async function getGroup(companyId, id) {
+  const group = await prisma.ledgerGroup.findFirst({
+    where: { id, companyId },
     include: {
       parent: { select: { id: true, name: true } },
       children: { select: { id: true, name: true, nature: true } },
@@ -32,9 +33,9 @@ export async function getGroup(id) {
   return group;
 }
 
-export async function createGroup({ name, nature, parentId }) {
+export async function createGroup(companyId, { name, nature, parentId }) {
   if (parentId) {
-    const parent = await prisma.ledgerGroup.findUnique({ where: { id: parentId } });
+    const parent = await prisma.ledgerGroup.findFirst({ where: { id: parentId, companyId } });
     if (!parent) {
       const err = new Error('Parent ledger group not found.');
       err.status = 404;
@@ -47,7 +48,7 @@ export async function createGroup({ name, nature, parentId }) {
     }
   }
 
-  const duplicate = await prisma.ledgerGroup.findUnique({ where: { name } });
+  const duplicate = await prisma.ledgerGroup.findUnique({ where: { companyId_name: { companyId, name } } });
   if (duplicate) {
     const err = new Error(`A ledger group named "${name}" already exists.`);
     err.status = 400;
@@ -55,12 +56,12 @@ export async function createGroup({ name, nature, parentId }) {
   }
 
   return prisma.ledgerGroup.create({
-    data: { name, nature, parentId: parentId || null },
+    data: { companyId, name, nature, parentId: parentId || null },
   });
 }
 
-export async function updateGroup(id, { name, parentId }) {
-  const group = await prisma.ledgerGroup.findUnique({ where: { id } });
+export async function updateGroup(companyId, id, { name, parentId }) {
+  const group = await prisma.ledgerGroup.findFirst({ where: { id, companyId } });
   if (!group) {
     const err = new Error('Ledger group not found.');
     err.status = 404;
@@ -77,14 +78,19 @@ export async function updateGroup(id, { name, parentId }) {
   });
 }
 
-export async function deleteGroup(id) {
-  const group = await prisma.ledgerGroup.findUnique({
-    where: { id },
+export async function deleteGroup(companyId, id) {
+  const group = await prisma.ledgerGroup.findFirst({
+    where: { id, companyId },
     include: { _count: { select: { ledgers: true, children: true } } },
   });
   if (!group) {
     const err = new Error('Ledger group not found.');
     err.status = 404;
+    throw err;
+  }
+  if (group.isSystem) {
+    const err = new Error('Cannot delete a system-defined ledger group.');
+    err.status = 400;
     throw err;
   }
   if (group._count.ledgers > 0 || group._count.children > 0) {
@@ -99,17 +105,17 @@ export async function deleteGroup(id) {
 // LEDGERS
 // ============================================
 
-export async function listLedgers({ groupId } = {}) {
+export async function listLedgers(companyId, { groupId } = {}) {
   return prisma.ledger.findMany({
-    where: groupId ? { groupId } : {},
+    where: { companyId, ...(groupId ? { groupId } : {}) },
     include: { group: { select: { id: true, name: true, nature: true } } },
     orderBy: { name: 'asc' },
   });
 }
 
-export async function getLedger(id) {
-  const ledger = await prisma.ledger.findUnique({
-    where: { id },
+export async function getLedger(companyId, id) {
+  const ledger = await prisma.ledger.findFirst({
+    where: { id, companyId },
     include: { group: true },
   });
   if (!ledger) {
@@ -120,15 +126,15 @@ export async function getLedger(id) {
   return ledger;
 }
 
-export async function createLedger({ name, groupId, openingBalance, openingBalanceType, description }) {
-  const group = await prisma.ledgerGroup.findUnique({ where: { id: groupId } });
+export async function createLedger(companyId, { name, groupId, openingBalance, openingBalanceType, description }) {
+  const group = await prisma.ledgerGroup.findFirst({ where: { id: groupId, companyId } });
   if (!group) {
     const err = new Error('Ledger group not found.');
     err.status = 404;
     throw err;
   }
 
-  const duplicate = await prisma.ledger.findUnique({ where: { name } });
+  const duplicate = await prisma.ledger.findUnique({ where: { companyId_name: { companyId, name } } });
   if (duplicate) {
     const err = new Error(`A ledger named "${name}" already exists.`);
     err.status = 400;
@@ -137,6 +143,7 @@ export async function createLedger({ name, groupId, openingBalance, openingBalan
 
   return prisma.ledger.create({
     data: {
+      companyId,
       name,
       groupId,
       openingBalance: openingBalance || 0,
@@ -146,8 +153,8 @@ export async function createLedger({ name, groupId, openingBalance, openingBalan
   });
 }
 
-export async function updateLedger(id, { name, groupId, openingBalance, openingBalanceType, description }) {
-  const ledger = await prisma.ledger.findUnique({ where: { id } });
+export async function updateLedger(companyId, id, { name, groupId, openingBalance, openingBalanceType, description }) {
+  const ledger = await prisma.ledger.findFirst({ where: { id, companyId } });
   if (!ledger) {
     const err = new Error('Ledger not found.');
     err.status = 404;
@@ -155,7 +162,7 @@ export async function updateLedger(id, { name, groupId, openingBalance, openingB
   }
 
   if (groupId) {
-    const group = await prisma.ledgerGroup.findUnique({ where: { id: groupId } });
+    const group = await prisma.ledgerGroup.findFirst({ where: { id: groupId, companyId } });
     if (!group) {
       const err = new Error('Ledger group not found.');
       err.status = 404;
@@ -175,14 +182,19 @@ export async function updateLedger(id, { name, groupId, openingBalance, openingB
   });
 }
 
-export async function deleteLedger(id) {
-  const ledger = await prisma.ledger.findUnique({
-    where: { id },
-    include: { party: true },
+export async function deleteLedger(companyId, id) {
+  const ledger = await prisma.ledger.findFirst({
+    where: { id, companyId },
+    include: { party: true, bankAccount: true },
   });
   if (!ledger) {
     const err = new Error('Ledger not found.');
     err.status = 404;
+    throw err;
+  }
+  if (ledger.isSystem) {
+    const err = new Error('Cannot delete a system-defined ledger.');
+    err.status = 400;
     throw err;
   }
   if (ledger.party) {
@@ -190,8 +202,12 @@ export async function deleteLedger(id) {
     err.status = 400;
     throw err;
   }
+  if (ledger.bankAccount) {
+    const err = new Error('Cannot delete ledger linked to a Bank Account.');
+    err.status = 400;
+    throw err;
+  }
 
-  // Check if ledger has any vouchers
   const hasVouchers = await prisma.voucherLine.findFirst({ where: { ledgerId: id } });
   if (hasVouchers) {
     const err = new Error('Cannot delete ledger with existing voucher postings.');

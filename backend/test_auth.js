@@ -114,7 +114,7 @@ async function runTests() {
     const data = await res.json();
     assert.strictEqual(res.status, 201);
     assert.strictEqual(data.success, true);
-    assert.strictEqual(data.data.employee.role, 'EMPLOYEE');
+    assert.strictEqual(data.data.employee.role, 'STAFF');
     console.log('✅ Employee registered under the same company schema.');
   } catch (error) {
     console.error('❌ Employee registration failed:', error);
@@ -154,7 +154,7 @@ async function runTests() {
     assert.strictEqual(res.status, 200);
     assert.strictEqual(data.success, true);
     assert.strictEqual(data.data.user.email, employeeEmail);
-    assert.strictEqual(data.data.user.role, 'EMPLOYEE');
+    assert.strictEqual(data.data.user.role, 'STAFF');
     console.log('✅ Employee GET /me profile is valid.');
   } catch (error) {
     console.error('❌ Employee Profile check failed:', error);

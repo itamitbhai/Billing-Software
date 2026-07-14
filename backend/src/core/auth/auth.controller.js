@@ -2,8 +2,8 @@ import * as authService from './auth.service.js';
 
 export async function registerCeo(req, res, next) {
   try {
-    const { companyName, name, email, password } = req.body;
-    
+    const { companyName, name, email, password, state } = req.body;
+
     if (!companyName || !name || !email || !password) {
       return res.status(400).json({
         success: false,
@@ -23,6 +23,7 @@ export async function registerCeo(req, res, next) {
       name,
       email,
       password,
+      state,
     });
 
     res.status(201).json({
@@ -100,7 +101,8 @@ export async function refresh(req, res, next) {
 
 export async function logout(req, res, next) {
   try {
-    await authService.logout();
+    const { refreshToken } = req.body;
+    await authService.logout({ refreshToken });
 
     res.status(200).json({
       success: true,
@@ -130,6 +132,7 @@ export async function registerEmployee(req, res, next) {
     }
 
     const employee = await authService.registerEmployee({
+      companyId: req.user.companyId,
       name,
       email,
       password,
@@ -161,7 +164,7 @@ export async function me(req, res, next) {
 
 export async function listUsers(req, res, next) {
   try {
-    const users = await authService.listUsers();
+    const users = await authService.listUsers({ companyId: req.user.companyId });
     res.json({
       success: true,
       count: users.length,

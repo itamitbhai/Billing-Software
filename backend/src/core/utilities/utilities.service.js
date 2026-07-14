@@ -4,38 +4,24 @@ import { prisma } from '../../shared/database/prisma.js';
 // COMPANY PROFILE
 // ============================================
 
-export async function getCompanyProfile() {
-  let company = await prisma.companySettings.findFirst();
+export async function getCompanyProfile(companyId) {
+  const company = await prisma.company.findUnique({ where: { id: companyId } });
   if (!company) {
-    // Return a default mock object or create a default setting
-    company = await prisma.companySettings.create({
-      data: {
-        companyName: 'VS Arogya Meda',
-        gstin: '27AAAAA1111A1Z1',
-        state: 'Maharashtra',
-      },
-    });
+    const err = new Error('Company not found.');
+    err.status = 404;
+    throw err;
   }
   return company;
 }
 
-export async function updateCompanyProfile(data) {
-  let company = await prisma.companySettings.findFirst();
-  if (!company) {
-    company = await prisma.companySettings.create({
-      data: {
-        companyName: data.companyName || 'VS Arogya Meda',
-        gstin: data.gstin || '27AAAAA1111A1Z1',
-        state: data.state || 'Maharashtra',
-      },
-    });
-  }
-
-  return prisma.companySettings.update({
-    where: { id: company.id },
+export async function updateCompanyProfile(companyId, data) {
+  await getCompanyProfile(companyId);
+  return prisma.company.update({
+    where: { id: companyId },
     data: {
-      companyName: data.companyName,
+      name: data.name ?? data.companyName,
       gstin: data.gstin,
+      pan: data.pan,
       state: data.state,
       address: data.address,
       phone: data.phone,
@@ -52,7 +38,7 @@ export async function updateCompanyProfile(data) {
 // SYSTEM STATS
 // ============================================
 
-export async function getSystemStats() {
+export async function getSystemStats(companyId) {
   const [
     userCount,
     partyCount,
@@ -63,14 +49,14 @@ export async function getSystemStats() {
     salesSumObj,
     purchasesSumObj,
   ] = await Promise.all([
-    prisma.user.count(),
-    prisma.party.count(),
-    prisma.product.count(),
-    prisma.batch.count(),
-    prisma.sale.count(),
-    prisma.purchase.count(),
-    prisma.sale.aggregate({ _sum: { totalAmount: true } }),
-    prisma.purchase.aggregate({ _sum: { totalAmount: true } }),
+    prisma.user.count({ where: { companyId } }),
+    prisma.party.count({ where: { companyId } }),
+    prisma.product.count({ where: { companyId } }),
+    prisma.batch.count({ where: { companyId } }),
+    prisma.sale.count({ where: { companyId } }),
+    prisma.purchase.count({ where: { companyId } }),
+    prisma.sale.aggregate({ where: { companyId }, _sum: { totalAmount: true } }),
+    prisma.purchase.aggregate({ where: { companyId }, _sum: { totalAmount: true } }),
   ]);
 
   return {

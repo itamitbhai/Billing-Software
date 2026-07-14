@@ -1,0 +1,45 @@
+// ============================================
+// banking.prisma - Bank Accounts & Reconciliation
+// ============================================
+
+model BankAccount {
+  id        String  @id @default(uuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  name          String
+  ledgerId      String  @unique
+  ledger        Ledger  @relation(fields: [ledgerId], references: [id])
+  bankName      String
+  accountNumber String
+  ifsc          String?
+  branch        String?
+
+  openingBalance Decimal  @default(0) @db.Decimal(14, 2)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  reconciliations BankReconciliation[]
+
+  @@unique([companyId, accountNumber])
+  @@index([companyId])
+}
+
+model BankReconciliation {
+  id            String      @id @default(uuid())
+  companyId     String
+  bankAccountId String
+  bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id])
+  voucherLineId String      @unique
+  voucherLine   VoucherLine @relation(fields: [voucherLineId], references: [id])
+
+  statementDate   DateTime?
+  statementAmount Decimal?  @db.Decimal(14, 2)
+  isReconciled    Boolean   @default(false)
+  reconciledAt    DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([bankAccountId])
+  @@index([companyId])
+}

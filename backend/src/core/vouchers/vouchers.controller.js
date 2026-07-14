@@ -1,18 +1,20 @@
 import * as vouchersService from './vouchers.service.js';
 
+const MANUAL_TYPES = ['CONTRA', 'JOURNAL', 'CREDIT_NOTE', 'DEBIT_NOTE'];
+
 export async function listVouchers(req, res, next) {
   try {
     const { type, startDate, endDate, page, limit } = req.query;
     const result = await vouchersService.listVouchers({
-      type, startDate, endDate, page, limit,
+      companyId: req.user.companyId, type, startDate, endDate, page, limit,
     });
-    res.json({ success: true, ...result });
+    res.json({ success: true, count: result.data.length, ...result });
   } catch (err) { next(err); }
 }
 
 export async function getVoucher(req, res, next) {
   try {
-    const voucher = await vouchersService.getVoucher(req.params.id);
+    const voucher = await vouchersService.getVoucher(req.user.companyId, req.params.id);
     res.json({ success: true, data: voucher });
   } catch (err) { next(err); }
 }
@@ -20,9 +22,11 @@ export async function getVoucher(req, res, next) {
 export async function createVoucher(req, res, next) {
   try {
     const { type, lines } = req.body;
-    const VALID_TYPES = ['SALES', 'PURCHASE', 'RECEIPT', 'PAYMENT', 'CONTRA', 'JOURNAL', 'CREDIT_NOTE', 'DEBIT_NOTE'];
-    if (!type || !VALID_TYPES.includes(type)) {
-      return res.status(400).json({ success: false, message: `"type" must be one of: ${VALID_TYPES.join(', ')}.` });
+    if (!type || !MANUAL_TYPES.includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: `"type" must be one of: ${MANUAL_TYPES.join(', ')}. SALES/PURCHASE/RECEIPT/PAYMENT vouchers are created automatically via the billing module.`,
+      });
     }
     if (!Array.isArray(lines) || lines.length < 2) {
       return res.status(400).json({ success: false, message: 'Provide at least 2 voucher lines.' });
@@ -32,21 +36,21 @@ export async function createVoucher(req, res, next) {
         return res.status(400).json({ success: false, message: 'Each line must have ledgerId, type (DEBIT/CREDIT), and amount.' });
       }
     }
-    const voucher = await vouchersService.createVoucher(req.body);
+    const voucher = await vouchersService.createVoucher(req.user.companyId, req.body, req.user.id);
     res.status(201).json({ success: true, message: `${type} voucher created successfully.`, data: voucher });
   } catch (err) { next(err); }
 }
 
 export async function updateVoucher(req, res, next) {
   try {
-    const voucher = await vouchersService.updateVoucher(req.params.id, req.body);
+    const voucher = await vouchersService.updateVoucher(req.user.companyId, req.params.id, req.body);
     res.json({ success: true, message: 'Voucher updated.', data: voucher });
   } catch (err) { next(err); }
 }
 
 export async function deleteVoucher(req, res, next) {
   try {
-    const result = await vouchersService.deleteVoucher(req.params.id);
-    res.json({ success: true, message: `Voucher deleted successfully.`, data: result });
+    const result = await vouchersService.deleteVoucher(req.user.companyId, req.params.id, req.user.id);
+    res.json({ success: true, message: `Voucher cancelled successfully.`, data: result });
   } catch (err) { next(err); }
 }
