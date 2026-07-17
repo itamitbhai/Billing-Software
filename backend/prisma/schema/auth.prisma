@@ -12,6 +12,7 @@ model Company {
   phone         String?
   email         String?  @unique
   invoicePrefix String   @default("INV")
+  dlNumber      String? // Drug License No. (pharma statutory requirement, printed on GST invoices)
   bankName      String?
   accountNo     String?
   ifscCode      String?

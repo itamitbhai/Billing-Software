@@ -18,6 +18,7 @@ model Party {
   city       String?
   state      String?
   pincode    String?
+  dlNumber   String? // Buyer's Drug License No. (required on pharma GST invoices)
 
   // --- Manual fields (billing-specific, not in existing app) ---
   type             PartyType @default(CUSTOMER)
