@@ -15,42 +15,48 @@ export const tallyApi = {
     delete: (id) => apiClient.delete(`/accounts/ledgers/${id}`).then(r => r.data)
   },
 
-  // ── Masters (Parties, Stock Items, Units, Cost Centres) ─────
+  // ── Masters (Parties, Stock Items/Products, Batches, Cost Centres) ─────
   parties: {
     list: (type) => apiClient.get('/masters/parties', { params: { type } }).then(r => r.data),
     create: (data) => apiClient.post('/masters/parties', data).then(r => r.data),
     update: (id, data) => apiClient.put(`/masters/parties/${id}`, data).then(r => r.data),
     delete: (id) => apiClient.delete(`/masters/parties/${id}`).then(r => r.data)
   },
-  stockGroups: {
-    list: () => apiClient.get('/masters/stock-groups').then(r => r.data),
-    create: (data) => apiClient.post('/masters/stock-groups', data).then(r => r.data),
-    delete: (id) => apiClient.delete(`/masters/stock-groups/${id}`).then(r => r.data)
-  },
   stockItems: {
     list: () => apiClient.get('/masters/stock-items').then(r => r.data),
+    get: (id) => apiClient.get(`/masters/stock-items/${id}`).then(r => r.data),
     create: (data) => apiClient.post('/masters/stock-items', data).then(r => r.data),
     update: (id, data) => apiClient.put(`/masters/stock-items/${id}`, data).then(r => r.data),
     delete: (id) => apiClient.delete(`/masters/stock-items/${id}`).then(r => r.data)
   },
-  units: {
-    list: () => apiClient.get('/masters/units').then(r => r.data),
-    create: (data) => apiClient.post('/masters/units', data).then(r => r.data),
-    delete: (id) => apiClient.delete(`/masters/units/${id}`).then(r => r.data)
-  },
-  taxRates: {
-    list: () => apiClient.get('/masters/tax-rates').then(r => r.data),
-    create: (data) => apiClient.post('/masters/tax-rates', data).then(r => r.data),
-    delete: (id) => apiClient.delete(`/masters/tax-rates/${id}`).then(r => r.data)
+  batches: {
+    list: (productId) => apiClient.get('/masters/batches', { params: { productId } }).then(r => r.data),
+    get: (id) => apiClient.get(`/masters/batches/${id}`).then(r => r.data),
+    create: (data) => apiClient.post('/masters/batches', data).then(r => r.data)
   },
   costCentres: {
     list: () => apiClient.get('/masters/cost-centres').then(r => r.data),
-    create: (data) => apiClient.post('/masters/cost-centres', data).then(r => r.data),
-    delete: (id) => apiClient.delete(`/masters/cost-centres/${id}`).then(r => r.data)
+    create: (data) => apiClient.post('/masters/cost-centres', data).then(r => r.data)
   },
-  currencies: {
-    list: () => apiClient.get('/masters/currencies').then(r => r.data),
-    create: (data) => apiClient.post('/masters/currencies', data).then(r => r.data)
+
+  // ── Billing (Sales / Purchases / Payments) ─────────────────
+  billing: {
+    sales: {
+      list: (params) => apiClient.get('/billing/sales', { params }).then(r => r.data),
+      get: (id) => apiClient.get(`/billing/sales/${id}`).then(r => r.data),
+      create: (data) => apiClient.post('/billing/sales', data).then(r => r.data),
+      lastForCustomer: (customerId) => apiClient.get('/billing/sales/last', { params: { customerId } }).then(r => r.data)
+    },
+    purchases: {
+      list: (params) => apiClient.get('/billing/purchases', { params }).then(r => r.data),
+      get: (id) => apiClient.get(`/billing/purchases/${id}`).then(r => r.data),
+      create: (data) => apiClient.post('/billing/purchases', data).then(r => r.data)
+    },
+    payments: {
+      list: (params) => apiClient.get('/billing/payments', { params }).then(r => r.data),
+      get: (id) => apiClient.get(`/billing/payments/${id}`).then(r => r.data),
+      create: (data) => apiClient.post('/billing/payments', data).then(r => r.data)
+    }
   },
 
   // ── Vouchers ──────────────────────────────────────────────
@@ -92,26 +98,11 @@ export const tallyApi = {
 
   // ── Utilities ─────────────────────────────────────────────
   utilities: {
-    financialYears: {
-      list: () => apiClient.get('/utilities/financial-years').then(r => r.data),
-      create: (data) => apiClient.post('/utilities/financial-years', data).then(r => r.data),
-      activate: (id) => apiClient.put(`/utilities/financial-years/${id}/activate`).then(r => r.data),
-      delete: (id) => apiClient.delete(`/utilities/financial-years/${id}`).then(r => r.data)
-    },
     company: {
       get: () => apiClient.get('/utilities/company').then(r => r.data),
       update: (data) => apiClient.put('/utilities/company', data).then(r => r.data)
     },
-    auditTrail: (params) => apiClient.get('/utilities/audit-trail', { params }).then(r => r.data),
     stats: () => apiClient.get('/utilities/stats').then(r => r.data),
-    exportData: () => apiClient.get('/utilities/export/data', { responseType: 'blob' }).then(r => {
-      const url = window.URL.createObjectURL(new Blob([r.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `tally-export-${Date.now()}.json`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    })
+    auditLogs: (params) => apiClient.get('/utilities/audit-logs', { params }).then(r => r.data)
   }
 };

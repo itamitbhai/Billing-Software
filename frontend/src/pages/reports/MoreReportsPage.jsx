@@ -118,7 +118,7 @@ export default function MoreReportsPage() {
           </div>
           <div>
             <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">To Date</label>
-            <input type="date" value={endDate} onChange={e => setTargetDateRange(e.target.value)} className="w-full bg-[#0d1224] border border-gray-800 rounded-lg p-2 text-white text-xs outline-none" />
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-[#0d1224] border border-gray-800 rounded-lg p-2 text-white text-xs outline-none" />
           </div>
         </div>
       )}

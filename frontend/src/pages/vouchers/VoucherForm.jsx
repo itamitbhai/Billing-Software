@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tallyApi } from '../../api/tally.api';
-import { Plus, Trash2, Save, Undo2, Calculator, Package } from 'lucide-react';
+import { Plus, Trash2, Save, Undo2, Calculator } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatRupees } from '../../utils/format';
 
@@ -10,26 +10,24 @@ export default function VoucherForm() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [type, setType] = useState('SALES');
+  const [type, setType] = useState('JOURNAL');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [narration, setNarration] = useState('');
   const [partyId, setPartyId] = useState('');
-  
-  // Ledger rows: list of { ledgerId, type, amount, description, costCentreId, items }
+
+  // Ledger rows: list of { ledgerId, type, amount, description, costCentreId }
   const [lines, setLines] = useState([
-    { ledgerId: '', type: 'DEBIT', amount: '', description: '', costCentreId: '', items: [] },
-    { ledgerId: '', type: 'CREDIT', amount: '', description: '', costCentreId: '', items: [] }
+    { ledgerId: '', type: 'DEBIT', amount: '', description: '', costCentreId: '' },
+    { ledgerId: '', type: 'CREDIT', amount: '', description: '', costCentreId: '' }
   ]);
 
   // ── Queries ───────────────────────────────────────────────────
   const { data: ledgersRes } = useQuery({ queryKey: ['ledgers'], queryFn: () => tallyApi.ledgers.list() });
   const { data: partiesRes } = useQuery({ queryKey: ['parties'], queryFn: () => tallyApi.parties.list() });
-  const { data: stockItemsRes } = useQuery({ queryKey: ['stock-items'], queryFn: tallyApi.stockItems.list });
   const { data: costCentresRes } = useQuery({ queryKey: ['cost-centres'], queryFn: tallyApi.costCentres.list });
 
   const ledgers = ledgersRes?.data || [];
   const parties = partiesRes?.data || [];
-  const stockItems = stockItemsRes?.data || [];
   const costCentres = costCentresRes?.data || [];
 
   // ── Mutations ─────────────────────────────────────────────────
@@ -50,7 +48,7 @@ export default function VoucherForm() {
 
   // ── Row Management Handlers ────────────────────────────────────
   const addLineRow = () => {
-    setLines([...lines, { ledgerId: '', type: 'CREDIT', amount: '', description: '', costCentreId: '', items: [] }]);
+    setLines([...lines, { ledgerId: '', type: 'CREDIT', amount: '', description: '', costCentreId: '' }]);
   };
 
   const removeLineRow = (index) => {
@@ -64,61 +62,16 @@ export default function VoucherForm() {
     setLines(updated);
   };
 
-  // Nested Stock items for Sales/Purchase line rows
-  const handleAddStockItem = (index) => {
-    const updated = [...lines];
-    updated[index].items.push({ stockItemId: '', quantity: '1', rate: '0', discount: '0', amount: '0' });
-    setLines(updated);
-  };
-
-  const handleStockItemChange = (lineIndex, itemIndex, field, value) => {
-    const updated = [...lines];
-    const item = updated[lineIndex].items[itemIndex];
-    item[field] = value;
-
-    // Auto calculate amount = (qty * rate) - discount
-    if (field === 'quantity' || field === 'rate' || field === 'discount') {
-      const q = Number(item.quantity) || 0;
-      const r = Number(item.rate) || 0;
-      const d = Number(item.discount) || 0;
-      item.amount = String((q * r) - d);
-      
-      // Auto fill the parent ledger line amount
-      const lineTotal = updated[lineIndex].items.reduce((s, it) => s + (Number(it.amount) || 0), 0);
-      updated[lineIndex].amount = String(lineTotal);
-    }
-
-    setLines(updated);
-  };
-
-  const handleRemoveStockItem = (lineIndex, itemIndex) => {
-    const updated = [...lines];
-    updated[lineIndex].items = updated[lineIndex].items.filter((_, idx) => idx !== itemIndex);
-    
-    // Recalculate parent ledger line amount
-    const lineTotal = updated[lineIndex].items.reduce((s, it) => s + (Number(it.amount) || 0), 0);
-    updated[lineIndex].amount = String(lineTotal);
-
-    setLines(updated);
-  };
-
   const handleSubmit = (e) => {
     e.preventDefault();
     if (difference !== 0) return toast.error('Double-entry violation: Total Debits must match Total Credits.');
-    
+
     const formattedLines = lines.map(l => ({
       ledgerId: l.ledgerId,
       type: l.type,
       amount: BigInt(Math.round(Number(l.amount) * 100)).toString(), // to paise String
       description: l.description,
       costCentreId: l.costCentreId || null,
-      items: l.items.length ? l.items.map(it => ({
-        stockItemId: it.stockItemId,
-        quantity: parseFloat(it.quantity),
-        rate: BigInt(Math.round(Number(it.rate) * 100)).toString(),
-        discount: BigInt(Math.round(Number(it.discount) * 100)).toString(),
-        amount: BigInt(Math.round(Number(it.amount) * 100)).toString()
-      })) : undefined
     }));
 
     createVoucherMut.mutate({
@@ -155,15 +108,16 @@ export default function VoucherForm() {
               onChange={(e) => setType(e.target.value)}
               className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2 text-white outline-none text-xs"
             >
-              <option value="SALES">SALES</option>
-              <option value="PURCHASE">PURCHASE</option>
-              <option value="RECEIPT">RECEIPT</option>
-              <option value="PAYMENT">PAYMENT</option>
-              <option value="CONTRA">CONTRA</option>
               <option value="JOURNAL">JOURNAL</option>
+              <option value="CONTRA">CONTRA</option>
               <option value="CREDIT_NOTE">CREDIT NOTE</option>
               <option value="DEBIT_NOTE">DEBIT NOTE</option>
             </select>
+            <p className="text-[10px] text-gray-500 mt-1.5">
+              Sales, Purchase, Receipt &amp; Payment are posted automatically from{' '}
+              <button type="button" onClick={() => navigate('/sales/new')} className="text-amber-500 hover:underline cursor-pointer">Sales &amp; GST Bills</button>
+              {' '}— they can't be posted manually here.
+            </p>
           </div>
           <div>
             <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Posting Date</label>
@@ -261,68 +215,6 @@ export default function VoucherForm() {
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
-
-                {/* Optional Inventory allocation inside the ledger row (for Sales/Purchase lines) */}
-                {line.ledgerId && (type === 'SALES' || type === 'PURCHASE') && (
-                  <div className="bg-[#111827]/20 border border-gray-800/40 p-4 rounded-lg ml-0 md:ml-36 space-y-3">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Inventory Allocation</span>
-                      <button
-                        type="button"
-                        onClick={() => handleAddStockItem(lineIdx)}
-                        className="flex items-center gap-1 text-[9px] font-bold text-amber-500 bg-amber-500/5 border border-amber-500/10 px-2 py-0.5 rounded hover:bg-amber-500 hover:text-[#0a0e1a] cursor-pointer"
-                      >
-                        <Package className="h-3 w-3" /> Alloc Item
-                      </button>
-                    </div>
-                    {line.items.map((item, itemIdx) => (
-                      <div key={itemIdx} className="flex flex-col md:flex-row gap-3 items-center">
-                        <select
-                          value={item.stockItemId}
-                          required
-                          onChange={(e) => handleStockItemChange(lineIdx, itemIdx, 'stockItemId', e.target.value)}
-                          className="flex-1 bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-1.5 text-xs text-white"
-                        >
-                          <option value="">Select Item...</option>
-                          {stockItems.map(it => (
-                            <option key={it.id} value={it.id}>{it.name}</option>
-                          ))}
-                        </select>
-                        <input
-                          type="number"
-                          placeholder="Qty"
-                          value={item.quantity}
-                          onChange={(e) => handleStockItemChange(lineIdx, itemIdx, 'quantity', e.target.value)}
-                          className="w-20 bg-[#0d1224] border border-gray-800 rounded-lg p-1.5 text-xs text-white font-mono"
-                        />
-                        <input
-                          type="number"
-                          placeholder="Rate (₹)"
-                          value={item.rate}
-                          onChange={(e) => handleStockItemChange(lineIdx, itemIdx, 'rate', e.target.value)}
-                          className="w-24 bg-[#0d1224] border border-gray-800 rounded-lg p-1.5 text-xs text-white font-mono"
-                        />
-                        <input
-                          type="number"
-                          placeholder="Disc (₹)"
-                          value={item.discount}
-                          onChange={(e) => handleStockItemChange(lineIdx, itemIdx, 'discount', e.target.value)}
-                          className="w-20 bg-[#0d1224] border border-gray-800 rounded-lg p-1.5 text-xs text-white font-mono"
-                        />
-                        <span className="w-28 text-right font-mono font-bold text-xs text-white">
-                          {formatRupees(Number(item.amount) * 100)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveStockItem(lineIdx, itemIdx)}
-                          className="text-gray-500 hover:text-red-400 transition cursor-pointer"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             ))}
           </div>

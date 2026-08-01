@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../../shared/database/prisma.js';
 import { seedTallyDefaults } from '../../shared/utils/tally-seed.js';
+import { logAudit } from '../../shared/utils/audit-log.js';
 
 const VALID_ROLES = ['ADMIN', 'ACCOUNTANT', 'STAFF'];
 
@@ -63,7 +64,7 @@ function publicUser(user) {
   };
 }
 
-export async function registerCeo({ companyName, name, email, password, state }) {
+export async function registerCeo({ companyName, name, email, password, state }, meta = {}) {
   const existingUser = await prisma.user.findUnique({ where: { email } });
   if (existingUser) {
     const err = new Error('A user with this email already exists.');
@@ -98,7 +99,16 @@ export async function registerCeo({ companyName, name, email, password, state })
 
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user);
-    await createSession(tx, user, refreshToken);
+    await createSession(tx, user, refreshToken, meta);
+
+    await logAudit({
+      tx, companyId: company.id, userId: user.id, action: 'COMPANY_REGISTERED',
+      entityType: 'Company', entityId: company.id, metadata: { companyName },
+    });
+    await logAudit({
+      tx, companyId: company.id, userId: user.id, action: 'LOGIN_SUCCESS',
+      entityType: 'User', entityId: user.id, metadata: { email, via: 'register-ceo' },
+    });
 
     return {
       accessToken,
@@ -109,15 +119,20 @@ export async function registerCeo({ companyName, name, email, password, state })
   });
 }
 
-export async function login({ email, password }) {
+export async function login({ email, password }, meta = {}) {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
+    await logAudit({ action: 'LOGIN_FAILED', metadata: { email, reason: 'user_not_found' }, req: meta.req });
     const err = new Error('Invalid email or password.');
     err.status = 401;
     throw err;
   }
 
   if (!user.isActive) {
+    await logAudit({
+      companyId: user.companyId, userId: user.id, action: 'LOGIN_FAILED',
+      entityType: 'User', entityId: user.id, metadata: { email, reason: 'inactive_account' }, req: meta.req,
+    });
     const err = new Error('Your account is currently inactive.');
     err.status = 403;
     throw err;
@@ -125,6 +140,10 @@ export async function login({ email, password }) {
 
   const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
   if (!isPasswordValid) {
+    await logAudit({
+      companyId: user.companyId, userId: user.id, action: 'LOGIN_FAILED',
+      entityType: 'User', entityId: user.id, metadata: { email, reason: 'invalid_password' }, req: meta.req,
+    });
     const err = new Error('Invalid email or password.');
     err.status = 401;
     throw err;
@@ -135,7 +154,11 @@ export async function login({ email, password }) {
 
   await prisma.$transaction(async (tx) => {
     await tx.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
-    await createSession(tx, user, refreshToken);
+    await createSession(tx, user, refreshToken, meta);
+    await logAudit({
+      tx, companyId: user.companyId, userId: user.id, action: 'LOGIN_SUCCESS',
+      entityType: 'User', entityId: user.id, metadata: { email }, req: meta.req,
+    });
   });
 
   const company = await prisma.company.findUnique({ where: { id: user.companyId } });
@@ -185,19 +208,27 @@ export async function refresh({ refreshToken }) {
   return { accessToken: newAccessToken, refreshToken: newRefreshToken };
 }
 
-export async function logout({ refreshToken }) {
+export async function logout({ refreshToken }, meta = {}) {
   if (!refreshToken) return { success: true };
 
   const tokenHash = hashToken(refreshToken);
-  await prisma.session.updateMany({
-    where: { refreshTokenHash: tokenHash, isRevoked: false },
-    data: { isRevoked: true },
-  });
+  const session = await prisma.session.findUnique({ where: { refreshTokenHash: tokenHash } });
+  if (!session) return { success: true };
+
+  await prisma.session.update({ where: { id: session.id }, data: { isRevoked: true } });
+
+  const user = await prisma.user.findUnique({ where: { id: session.userId } });
+  if (user) {
+    await logAudit({
+      companyId: user.companyId, userId: user.id, action: 'LOGOUT',
+      entityType: 'User', entityId: user.id, req: meta.req,
+    });
+  }
 
   return { success: true };
 }
 
-export async function registerEmployee({ companyId, name, email, password, role }) {
+export async function registerEmployee({ companyId, name, email, password, role }, actorUserId = null) {
   const existingUser = await prisma.user.findUnique({ where: { email } });
   if (existingUser) {
     const err = new Error('A user with this email already exists.');
@@ -219,6 +250,11 @@ export async function registerEmployee({ companyId, name, email, password, role 
       role: employeeRole,
       isActive: true,
     },
+  });
+
+  await logAudit({
+    companyId, userId: actorUserId, action: 'USER_CREATE',
+    entityType: 'User', entityId: user.id, metadata: { email, role: employeeRole },
   });
 
   return publicUser(user);

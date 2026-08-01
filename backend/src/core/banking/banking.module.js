@@ -5,13 +5,14 @@ import { requireAuth, requireRoles } from '../auth/auth.middleware.js';
 const bankingRouter = Router();
 bankingRouter.use(requireAuth);
 
-const ADMIN = requireRoles(['ADMIN']);
+// Managing payments/receipts and bank reconciliation is core accountant work.
+const WRITE = requireRoles(['ADMIN', 'ACCOUNTANT']);
 
 // Bank Accounts
 bankingRouter.get('/accounts',           bankingController.listBankAccounts);
 bankingRouter.get('/accounts/:id',       bankingController.getBankAccount);
-bankingRouter.post('/accounts',    ADMIN, bankingController.createBankAccount);
-bankingRouter.put('/accounts/:id', ADMIN, bankingController.updateBankAccount);
+bankingRouter.post('/accounts',    WRITE, bankingController.createBankAccount);
+bankingRouter.put('/accounts/:id', WRITE, bankingController.updateBankAccount);
 
 // Bank Statement (date-filterable)
 bankingRouter.get('/accounts/:id/statement', bankingController.getBankStatement);

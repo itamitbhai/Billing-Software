@@ -15,6 +15,9 @@ import AccountsPage from './pages/accounts/AccountsPage';
 import MastersPage from './pages/masters/MastersPage';
 import VouchersPage from './pages/vouchers/VouchersPage';
 import VoucherForm from './pages/vouchers/VoucherForm';
+import SalesPage from './pages/sales/SalesPage';
+import SaleForm from './pages/sales/SaleForm';
+import InvoicePrint from './pages/sales/InvoicePrint';
 import BankingPage from './pages/banking/BankingPage';
 import BalanceSheetPage from './pages/reports/BalanceSheetPage';
 import ProfitLossPage from './pages/reports/ProfitLossPage';
@@ -74,6 +77,28 @@ export default function App() {
           </ProtectedRoute>
         } />
         
+        {/* Sales & GST Invoice Routing */}
+        <Route path="/sales" element={
+          <ProtectedRoute>
+            <AppShell>
+              <SalesPage />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+        <Route path="/sales/new" element={
+          <ProtectedRoute>
+            <AppShell>
+              <SaleForm />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+        {/* Standalone print sheet — deliberately outside AppShell so the sidebar/header never print */}
+        <Route path="/sales/:id/invoice" element={
+          <ProtectedRoute>
+            <InvoicePrint />
+          </ProtectedRoute>
+        } />
+
         {/* Vouchers Routing */}
         <Route path="/vouchers" element={
           <ProtectedRoute>

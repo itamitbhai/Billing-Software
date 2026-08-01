@@ -29,3 +29,17 @@ export function rupeesToPaise(rupees) {
   if (!rupees) return 0n;
   return BigInt(Math.round(Number(rupees) * 100));
 }
+
+/**
+ * Formats a plain rupee amount (Decimal/Number, NOT paise) as Indian Rupees.
+ * Use this for Billing module figures (Sale/Purchase/SaleItem), which the
+ * backend stores as rupee decimals — unlike the Vouchers module, which stores
+ * amounts in paise (see formatRupees above).
+ */
+export function formatCurrency(amount) {
+  if (amount === undefined || amount === null) return '0.00';
+  return new Intl.NumberFormat('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(amount));
+}

@@ -1,4 +1,5 @@
 import * as bankingService from './banking.service.js';
+import { logAudit } from '../../shared/utils/audit-log.js';
 
 export async function listBankAccounts(req, res, next) {
   try {
@@ -21,6 +22,10 @@ export async function createBankAccount(req, res, next) {
       return res.status(400).json({ success: false, message: '"name", "ledgerId", "bankName", and "accountNumber" are required.' });
     }
     const account = await bankingService.createBankAccount({ companyId: req.user.companyId, ...req.body });
+    await logAudit({
+      companyId: req.user.companyId, userId: req.user.id, action: 'BANK_ACCOUNT_CREATE',
+      entityType: 'BankAccount', entityId: account.id, metadata: { name: account.name, accountNumber: account.accountNumber }, req,
+    });
     res.status(201).json({ success: true, message: 'Bank account created.', data: account });
   } catch (err) { next(err); }
 }
@@ -28,6 +33,10 @@ export async function createBankAccount(req, res, next) {
 export async function updateBankAccount(req, res, next) {
   try {
     const account = await bankingService.updateBankAccount({ id: req.params.id, companyId: req.user.companyId, ...req.body });
+    await logAudit({
+      companyId: req.user.companyId, userId: req.user.id, action: 'BANK_ACCOUNT_UPDATE',
+      entityType: 'BankAccount', entityId: account.id, metadata: { name: account.name }, req,
+    });
     res.json({ success: true, message: 'Bank account updated.', data: account });
   } catch (err) { next(err); }
 }
@@ -62,6 +71,10 @@ export async function reconcileEntry(req, res, next) {
       bankAccountId: req.params.id,
       companyId: req.user.companyId,
       voucherLineId, statementDate, statementAmount,
+    });
+    await logAudit({
+      companyId: req.user.companyId, userId: req.user.id, action: 'BANK_ENTRY_RECONCILE',
+      entityType: 'BankReconciliation', entityId: result.id, metadata: { voucherLineId }, req,
     });
     res.json({ success: true, message: 'Entry reconciled.', data: result });
   } catch (err) { next(err); }

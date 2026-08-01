@@ -14,4 +14,7 @@ utilitiesRouter.put('/company',       ADMIN, utilitiesController.updateCompanyPr
 // ── Dashboard Stats ───────────────────────────────────────────────────────────
 utilitiesRouter.get('/stats', utilitiesController.getSystemStats);
 
+// ── Audit Log (security trail — Admin only) ─────────────────────────────────
+utilitiesRouter.get('/audit-logs', ADMIN, utilitiesController.listAuditLogs);
+
 export { utilitiesRouter };

@@ -1,4 +1,5 @@
 import * as accountsService from './accounts.service.js';
+import { logAudit } from '../../shared/utils/audit-log.js';
 
 // ============================================
 // LEDGER GROUPS
@@ -29,6 +30,10 @@ export async function createGroup(req, res, next) {
       return res.status(400).json({ success: false, message: `Nature must be one of: ${VALID_NATURES.join(', ')}.` });
     }
     const group = await accountsService.createGroup(req.user.companyId, { name, nature, parentId });
+    await logAudit({
+      companyId: req.user.companyId, userId: req.user.id, action: 'LEDGER_GROUP_CREATE',
+      entityType: 'LedgerGroup', entityId: group.id, metadata: { name: group.name, nature: group.nature }, req,
+    });
     res.status(201).json({ success: true, message: 'Ledger group created.', data: group });
   } catch (err) { next(err); }
 }
@@ -37,6 +42,10 @@ export async function updateGroup(req, res, next) {
   try {
     const { name, parentId } = req.body;
     const group = await accountsService.updateGroup(req.user.companyId, req.params.id, { name, parentId });
+    await logAudit({
+      companyId: req.user.companyId, userId: req.user.id, action: 'LEDGER_GROUP_UPDATE',
+      entityType: 'LedgerGroup', entityId: group.id, metadata: { name: group.name }, req,
+    });
     res.json({ success: true, message: 'Ledger group updated.', data: group });
   } catch (err) { next(err); }
 }
@@ -44,6 +53,10 @@ export async function updateGroup(req, res, next) {
 export async function deleteGroup(req, res, next) {
   try {
     const result = await accountsService.deleteGroup(req.user.companyId, req.params.id);
+    await logAudit({
+      companyId: req.user.companyId, userId: req.user.id, action: 'LEDGER_GROUP_DELETE',
+      entityType: 'LedgerGroup', entityId: req.params.id, req,
+    });
     res.json({ success: true, message: 'Ledger group deleted.', data: result });
   } catch (err) { next(err); }
 }
@@ -73,6 +86,10 @@ export async function createLedger(req, res, next) {
       return res.status(400).json({ success: false, message: 'Fields "name" and "groupId" are required.' });
     }
     const ledger = await accountsService.createLedger(req.user.companyId, { name, groupId, openingBalance, openingBalanceType });
+    await logAudit({
+      companyId: req.user.companyId, userId: req.user.id, action: 'LEDGER_CREATE',
+      entityType: 'Ledger', entityId: ledger.id, metadata: { name: ledger.name }, req,
+    });
     res.status(201).json({ success: true, message: 'Ledger created.', data: ledger });
   } catch (err) { next(err); }
 }
@@ -81,6 +98,10 @@ export async function updateLedger(req, res, next) {
   try {
     const { name, groupId, openingBalance, openingBalanceType } = req.body;
     const ledger = await accountsService.updateLedger(req.user.companyId, req.params.id, { name, groupId, openingBalance, openingBalanceType });
+    await logAudit({
+      companyId: req.user.companyId, userId: req.user.id, action: 'LEDGER_UPDATE',
+      entityType: 'Ledger', entityId: ledger.id, metadata: { name: ledger.name }, req,
+    });
     res.json({ success: true, message: 'Ledger updated.', data: ledger });
   } catch (err) { next(err); }
 }
@@ -88,6 +109,10 @@ export async function updateLedger(req, res, next) {
 export async function deleteLedger(req, res, next) {
   try {
     const result = await accountsService.deleteLedger(req.user.companyId, req.params.id);
+    await logAudit({
+      companyId: req.user.companyId, userId: req.user.id, action: 'LEDGER_DELETE',
+      entityType: 'Ledger', entityId: req.params.id, req,
+    });
     res.json({ success: true, message: 'Ledger deleted.', data: result });
   } catch (err) { next(err); }
 }

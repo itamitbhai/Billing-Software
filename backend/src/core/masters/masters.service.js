@@ -72,6 +72,7 @@ export async function createParty(companyId, data) {
         city: data.city || null,
         state: data.state || null,
         pincode: data.pincode || null,
+        dlNumber: data.dlNumber || null,
         type: data.type || 'CUSTOMER',
         creditLimit: data.creditLimit || null,
         creditPeriodDays: data.creditPeriodDays || 30,
@@ -111,6 +112,7 @@ export async function updateParty(companyId, id, data) {
         city: data.city,
         state: data.state,
         pincode: data.pincode,
+        dlNumber: data.dlNumber,
         type: data.type,
         creditLimit: data.creditLimit,
         creditPeriodDays: data.creditPeriodDays,
@@ -145,7 +147,13 @@ export async function listProducts({ companyId, page, limit }) {
   const where = { companyId };
 
   const [rows, total] = await Promise.all([
-    prisma.product.findMany({ where, orderBy: { name: 'asc' }, take, skip }),
+    prisma.product.findMany({
+      where,
+      include: { batches: { select: { currentQty: true } } },
+      orderBy: { name: 'asc' },
+      take,
+      skip,
+    }),
     prisma.product.count({ where }),
   ]);
 

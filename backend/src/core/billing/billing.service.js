@@ -480,8 +480,10 @@ export async function createPayment(companyId, { partyId, saleId, amount, method
     });
 
     if (saleId) {
+      // `payment` (created just above, in this same transaction) is already included in
+      // sale.payments here — do not add `amount` again or paid totals get double-counted.
       const sale = await tx.sale.findUnique({ where: { id: saleId }, include: { payments: true } });
-      const totalPaid = sale.payments.reduce((sum, p) => sum + Number(p.amount), 0) + Number(amount);
+      const totalPaid = sale.payments.reduce((sum, p) => sum + Number(p.amount), 0);
       const saleTotal = Number(sale.totalAmount);
 
       let newStatus = 'UNPAID';

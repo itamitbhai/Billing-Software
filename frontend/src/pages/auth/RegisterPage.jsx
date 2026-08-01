@@ -13,7 +13,8 @@ export default function RegisterPage() {
     companyName: '',
     name: '',
     email: '',
-    password: ''
+    password: '',
+    state: ''
   });
   const [loading, setLoading] = useState(false);
 
@@ -23,8 +24,8 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const { companyName, name, email, password } = formData;
-    if (!companyName || !name || !email || !password) {
+    const { companyName, name, email, password, state } = formData;
+    if (!companyName || !name || !email || !password || !state) {
       return toast.error('All fields are required');
     }
 
@@ -90,6 +91,25 @@ export default function RegisterPage() {
                 className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 rounded-xl py-2.5 pl-11 pr-4 text-white placeholder-gray-600 outline-none transition-all duration-200"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Company State (GST Region)</label>
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500">
+                <Building className="h-4.5 w-4.5" />
+              </span>
+              <input
+                type="text"
+                name="state"
+                required
+                value={formData.state}
+                onChange={handleChange}
+                placeholder="E.g., Jharkhand"
+                className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 rounded-xl py-2.5 pl-11 pr-4 text-white placeholder-gray-600 outline-none transition-all duration-200"
+              />
+            </div>
+            <p className="text-[10px] text-gray-500 mt-1.5">Used to auto-decide CGST+SGST vs IGST on your GST invoices — get this right, you can still edit it later under Utilities.</p>
           </div>
 
           <div>

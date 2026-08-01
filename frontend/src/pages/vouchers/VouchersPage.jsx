@@ -23,7 +23,7 @@ export default function VouchersPage() {
     queryFn: () => tallyApi.vouchers.list({ page, type, startDate, endDate, limit: 15 })
   });
 
-  const vouchers = voucherRes?.vouchers || [];
+  const vouchers = voucherRes?.data || [];
   const totalPages = voucherRes?.totalPages || 1;
 
   // ── Mutations ─────────────────────────────────────────────────

@@ -143,22 +143,22 @@ export default function GatewayPage() {
           <div className="glass p-6 rounded-xl border border-gray-800 space-y-5">
             <h4 className="text-sm font-bold text-white border-b border-gray-800 pb-3">Latest Activity</h4>
             
-            {stats?.data?.lastVoucher ? (
+            {stats?.data?.lastSale ? (
               <div className="space-y-3.5">
                 <div className="flex items-start gap-3">
                   <div className="h-8 w-8 rounded-lg bg-amber-500/10 flex items-center justify-center border border-amber-500/20 text-amber-500 shrink-0">
                     <Receipt className="h-4 w-4" />
                   </div>
                   <div>
-                    <p className="text-xs text-gray-400">Last Voucher Entry Created</p>
-                    <p className="text-sm font-semibold text-white mt-0.5">{stats.data.lastVoucher.voucherNumber}</p>
-                    <p className="text-[10px] text-amber-500/80 font-mono mt-0.5 uppercase">{stats.data.lastVoucher.type}</p>
+                    <p className="text-xs text-gray-400">Last GST Sale Invoice</p>
+                    <p className="text-sm font-semibold text-white mt-0.5">{stats.data.lastSale.invoiceNumber}</p>
+                    <p className="text-[10px] text-amber-500/80 font-mono mt-0.5">{stats.data.lastSale.customer?.name} · {formatRupees(Number(stats.data.lastSale.totalAmount) * 100)}</p>
                   </div>
                 </div>
               </div>
             ) : (
               <div className="text-center py-6 text-xs text-gray-400">
-                No voucher transactions logged yet
+                No sale invoices created yet
               </div>
             )}
           </div>

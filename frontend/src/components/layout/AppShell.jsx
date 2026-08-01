@@ -1,19 +1,20 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
-import { 
-  LayoutDashboard, 
-  BookOpen, 
-  FolderTree, 
-  Receipt, 
-  PiggyBank, 
-  BarChart3, 
-  Settings, 
+import {
+  LayoutDashboard,
+  BookOpen,
+  FolderTree,
+  Receipt,
+  PiggyBank,
+  BarChart3,
+  Settings,
   LogOut,
   User,
   Building,
   Menu,
-  X
+  X,
+  FileText
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -27,6 +28,7 @@ export default function AppShell({ children }) {
     { name: 'Gateway of Tally', href: '/', icon: LayoutDashboard },
     { name: 'Chart of Accounts', href: '/accounts', icon: FolderTree },
     { name: 'Masters Management', href: '/masters', icon: BookOpen },
+    { name: 'Sales & GST Bills', href: '/sales', icon: FileText },
     { name: 'Vouchers (Entries)', href: '/vouchers', icon: Receipt },
     { name: 'Banking Portal', href: '/banking', icon: PiggyBank },
     { name: 'Display Reports', href: '/reports', icon: BarChart3 },

@@ -1,4 +1,5 @@
 import * as billingService from './billing.service.js';
+import { logAudit } from '../../shared/utils/audit-log.js';
 
 const SUPPLY_TYPES = ['TAXABLE', 'ZERO_RATED_EXPORT', 'ZERO_RATED_SEZ', 'EXEMPT', 'NIL_RATED', 'NON_GST'];
 
@@ -17,6 +18,11 @@ export async function createPurchase(req, res, next) {
     }
 
     const purchase = await billingService.createPurchase(req.user.companyId, req.body, req.user.id);
+    await logAudit({
+      companyId: req.user.companyId, userId: req.user.id, action: 'PURCHASE_CREATE',
+      entityType: 'Purchase', entityId: purchase.id,
+      metadata: { billNumber: purchase.billNumber, totalAmount: purchase.totalAmount?.toString?.() ?? purchase.totalAmount }, req,
+    });
     res.status(201).json({
       success: true,
       message: 'Purchase recorded successfully and batch stocks updated.',
@@ -58,6 +64,11 @@ export async function createSale(req, res, next) {
     }
 
     const sale = await billingService.createSale(req.user.companyId, req.body, req.user.id);
+    await logAudit({
+      companyId: req.user.companyId, userId: req.user.id, action: 'SALE_CREATE',
+      entityType: 'Sale', entityId: sale.id,
+      metadata: { invoiceNumber: sale.invoiceNumber, totalAmount: sale.totalAmount?.toString?.() ?? sale.totalAmount }, req,
+    });
     res.status(201).json({
       success: true,
       message: 'Sale invoice created successfully and batch stocks decremented.',
@@ -96,6 +107,12 @@ export async function createPayment(req, res, next) {
     }
 
     const payment = await billingService.createPayment(req.user.companyId, req.body, req.user.id);
+
+    await logAudit({
+      companyId: req.user.companyId, userId: req.user.id, action: 'PAYMENT_CREATE',
+      entityType: 'Payment', entityId: payment.id,
+      metadata: { amount: payment.amount?.toString?.() ?? payment.amount, method: payment.method }, req,
+    });
 
     res.status(201).json({
       success: true,

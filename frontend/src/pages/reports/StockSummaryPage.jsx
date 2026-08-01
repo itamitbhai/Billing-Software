@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { tallyApi } from '../../api/tally.api';
 import { Loader2, ArrowLeft, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { formatRupees } from '../../utils/format';
+import { formatCurrency } from '../../utils/format';
 
 export default function StockSummaryPage() {
   const navigate = useNavigate();
@@ -15,7 +15,7 @@ export default function StockSummaryPage() {
     queryFn: () => tallyApi.reports.stockSummary({ asOfDate })
   });
 
-  const stockItems = stockRes || [];
+  const stockItems = stockRes?.data || [];
 
   const filteredItems = stockItems.filter(item =>
     item.name.toLowerCase().includes(search.toLowerCase())
@@ -63,41 +63,33 @@ export default function StockSummaryPage() {
               <thead>
                 <tr className="text-gray-400 font-bold uppercase border-b border-gray-800 pb-3">
                   <th className="pb-3" rowSpan={2}>Item Name</th>
-                  <th className="pb-3" rowSpan={2}>Group</th>
-                  <th className="pb-3 text-center border-b border-gray-800/40" colSpan={2}>Opening Balance</th>
+                  <th className="pb-3" rowSpan={2}>HSN</th>
                   <th className="pb-3 text-center border-b border-gray-800/40" colSpan={2}>Inwards (Purchases)</th>
                   <th className="pb-3 text-center border-b border-gray-800/40" colSpan={2}>Outwards (Sales)</th>
-                  <th className="pb-3 text-center border-b border-gray-800/40" colSpan={2}>Closing Stock</th>
+                  <th className="pb-3 text-right" rowSpan={2}>Closing Qty</th>
                 </tr>
                 <tr className="text-gray-500 font-semibold border-b border-gray-800">
                   <th className="py-2 text-right">Qty</th>
                   <th className="py-2 text-right">Value</th>
                   <th className="py-2 text-right">Qty</th>
                   <th className="py-2 text-right">Value</th>
-                  <th className="py-2 text-right">Qty</th>
-                  <th className="py-2 text-right">Value</th>
-                  <th className="py-2 text-right">Qty</th>
-                  <th className="py-2 text-right font-bold text-gray-400">Valuation</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800/40 text-sm">
                 {filteredItems.map(item => (
                   <tr key={item.id} className="hover:bg-[#111827]/10">
-                    <td className="py-3 font-semibold text-white">{item.name}</td>
-                    <td className="py-3 text-gray-400">{item.group}</td>
-                    <td className="py-3 text-right font-mono">{item.openingQty}</td>
-                    <td className="py-3 text-right font-mono">{formatRupees(item.openingVal)}</td>
+                    <td className="py-3 font-semibold text-white">{item.name} <span className="text-gray-500 font-normal">({item.unit})</span></td>
+                    <td className="py-3 text-gray-400 font-mono">{item.hsnCode || '-'}</td>
                     <td className="py-3 text-right font-mono text-emerald-500">+{item.inwardQty}</td>
-                    <td className="py-3 text-right font-mono text-emerald-500">{formatRupees(item.inwardVal)}</td>
+                    <td className="py-3 text-right font-mono text-emerald-500">₹{formatCurrency(item.inwardVal)}</td>
                     <td className="py-3 text-right font-mono text-red-500">-{item.outwardQty}</td>
-                    <td className="py-3 text-right font-mono text-red-500">{formatRupees(item.outwardVal)}</td>
-                    <td className="py-3 text-right font-mono font-bold text-white">{item.closingQty}</td>
-                    <td className="py-3 text-right font-mono font-bold text-amber-500">{formatRupees(item.closingVal)}</td>
+                    <td className="py-3 text-right font-mono text-red-500">₹{formatCurrency(item.outwardVal)}</td>
+                    <td className="py-3 text-right font-mono font-bold text-white">{item.closingQty} {item.unit}</td>
                   </tr>
                 ))}
                 {filteredItems.length === 0 && (
                   <tr>
-                    <td className="text-center py-10 text-gray-500" colSpan={10}>No stock items matching criteria</td>
+                    <td className="text-center py-10 text-gray-500" colSpan={7}>No stock items matching criteria</td>
                   </tr>
                 )}
               </tbody>

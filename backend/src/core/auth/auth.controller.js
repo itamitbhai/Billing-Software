@@ -24,7 +24,7 @@ export async function registerCeo(req, res, next) {
       email,
       password,
       state,
-    });
+    }, { userAgent: req.headers['user-agent'], ipAddress: req.ip, req });
 
     res.status(201).json({
       success: true,
@@ -55,7 +55,7 @@ export async function login(req, res, next) {
     const result = await authService.login({
       email,
       password,
-    });
+    }, { userAgent: req.headers['user-agent'], ipAddress: req.ip, req });
 
     res.status(200).json({
       success: true,
@@ -102,7 +102,7 @@ export async function refresh(req, res, next) {
 export async function logout(req, res, next) {
   try {
     const { refreshToken } = req.body;
-    await authService.logout({ refreshToken });
+    await authService.logout({ refreshToken }, { req });
 
     res.status(200).json({
       success: true,
@@ -137,7 +137,7 @@ export async function registerEmployee(req, res, next) {
       email,
       password,
       role,
-    });
+    }, req.user.id);
 
     res.status(201).json({
       success: true,
