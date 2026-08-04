@@ -5,6 +5,7 @@ import { tallyApi } from '../../api/tally.api';
 import { Loader2, Printer, Undo2 } from 'lucide-react';
 import { formatCurrency } from '../../utils/format';
 import { amountInWords } from '../../utils/numberToWords';
+import companyLogo from '../../assets/company-logo.png';
 
 function formatDDMMMYY(date) {
   if (!date) return '-';
@@ -117,16 +118,19 @@ export default function InvoicePrint() {
 
         {/* Seller + Invoice meta */}
         <div className="grid grid-cols-2">
-          <div className="p-2 border-r border-b border-black">
-            <p className="font-bold text-[13px]">{company?.name || 'Your Company Name'}</p>
-            <p className="whitespace-pre-line">{company?.address}</p>
-            {company?.dlNumber && <p>D L NO {company.dlNumber}</p>}
-            <p>{company?.state}{company?.state ? ', India' : ''}</p>
-            {company?.gstin && <p>GSTIN/UIN: {company.gstin}</p>}
-            {company?.state && <p>State Name : {company.state}</p>}
-            {(company?.phone || company?.email) && (
-              <p>{company?.phone ? `Contact : ${company.phone}` : ''}{company?.phone && company?.email ? '  ' : ''}{company?.email ? `E-Mail : ${company.email}` : ''}</p>
-            )}
+          <div className="p-2 border-r border-b border-black flex gap-2">
+            <img src={companyLogo} alt="Company Logo" className="h-14 w-14 object-contain shrink-0" />
+            <div>
+              <p className="font-bold text-[13px]">{company?.name || 'Your Company Name'}</p>
+              <p className="whitespace-pre-line">{company?.address}</p>
+              {company?.dlNumber && <p>D L NO {company.dlNumber}</p>}
+              <p>{company?.state}{company?.state ? ', India' : ''}</p>
+              {company?.gstin && <p>GSTIN/UIN: {company.gstin}</p>}
+              {company?.state && <p>State Name : {company.state}</p>}
+              {(company?.phone || company?.email) && (
+                <p>{company?.phone ? `Contact : ${company.phone}` : ''}{company?.phone && company?.email ? '  ' : ''}{company?.email ? `E-Mail : ${company.email}` : ''}</p>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-2 text-[10.5px]">
             <div className="p-1.5 border-b border-r border-black">Invoice No.<br /><span className="font-bold">{sale.invoiceNumber}</span></div>
