@@ -18,7 +18,9 @@ import { errorMiddleware } from '../src/shared/middleware/error.middleware.js';
 dotenv.config();
 
 const app  = express();
-const port = process.env.API_PORT || 3001;
+// Render (and most PaaS hosts) inject PORT and require the app to bind to it —
+// API_PORT stays as the local-dev override so `docker-compose`/`.env` setups keep working.
+const port = process.env.PORT || process.env.API_PORT || 3001;
 
 // ── Core Middlewares ──────────────────────────────────────────────────────────
 app.use(cors());

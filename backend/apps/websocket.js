@@ -4,7 +4,9 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const port = process.env.WEBSOCKET_PORT || 3001;
+// Render (and most PaaS hosts) inject PORT and require the app to bind to it —
+// WEBSOCKET_PORT stays as the local-dev override.
+const port = process.env.PORT || process.env.WEBSOCKET_PORT || 3001;
 
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
