@@ -6,6 +6,7 @@
   "main": "apps/api.js",
   "scripts": {
     "dev": "nodemon apps/api.js",
+    "start": "node apps/api.js",
     "start:api": "node apps/api.js",
     "start:api:dev": "nodemon apps/api.js",
     "start:worker": "node apps/worker.js",
