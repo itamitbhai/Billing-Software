@@ -15,7 +15,8 @@
     "prisma:generate": "prisma generate --schema ./prisma/schema",
     "prisma:migrate": "prisma migrate dev --schema ./prisma/schema",
     "prisma:studio": "prisma studio --schema ./prisma/schema",
-    "prisma:seed": "node prisma/seed.js"
+    "prisma:seed": "node prisma/seed.js",
+    "render-build": "prisma generate --schema ./prisma/schema && prisma migrate deploy --schema ./prisma/schema && node prisma/seed.js"
   },
   "dependencies": {
     "@prisma/client": "^5.14.0",
