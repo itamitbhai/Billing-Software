@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/auth.store';
+import { tallyApi } from '../../api/tally.api';
 import {
   LayoutDashboard,
   BookOpen,
   FolderTree,
   Receipt,
+  PackagePlus,
+  Wallet,
   PiggyBank,
   BarChart3,
   Settings,
@@ -24,11 +28,16 @@ export default function AppShell({ children }) {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const { data: stats } = useQuery({ queryKey: ['system-stats'], queryFn: tallyApi.utilities.stats });
+  const activeFyName = stats?.data?.activeFinancialYear?.name;
+
   const navigation = [
     { name: 'Gateway of Tally', href: '/', icon: LayoutDashboard },
     { name: 'Chart of Accounts', href: '/accounts', icon: FolderTree },
     { name: 'Masters Management', href: '/masters', icon: BookOpen },
     { name: 'Sales & GST Bills', href: '/sales', icon: FileText },
+    { name: 'Purchases (Stock IN)', href: '/purchases', icon: PackagePlus },
+    { name: 'Payments & Receipts', href: '/payments', icon: Wallet },
     { name: 'Vouchers (Entries)', href: '/vouchers', icon: Receipt },
     { name: 'Banking Portal', href: '/banking', icon: PiggyBank },
     { name: 'Display Reports', href: '/reports', icon: BarChart3 },
@@ -147,7 +156,7 @@ export default function AppShell({ children }) {
           <div className="flex items-center gap-4">
             <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-amber-500/10 border border-amber-500/20 rounded-full">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="text-xs font-semibold text-amber-500 tracking-wider">FY 2025-26</span>
+              <span className="text-xs font-semibold text-amber-500 tracking-wider">{activeFyName || 'No Active FY'}</span>
             </div>
             <div className="flex items-center gap-2.5 pl-4 border-l border-[#1f2937]">
               <div className="h-8 w-8 rounded-full bg-[#1f2937] flex items-center justify-content justify-center border border-gray-700">

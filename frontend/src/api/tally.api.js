@@ -32,11 +32,15 @@ export const tallyApi = {
   batches: {
     list: (productId) => apiClient.get('/masters/batches', { params: { productId } }).then(r => r.data),
     get: (id) => apiClient.get(`/masters/batches/${id}`).then(r => r.data),
-    create: (data) => apiClient.post('/masters/batches', data).then(r => r.data)
+    create: (data) => apiClient.post('/masters/batches', data).then(r => r.data),
+    update: (id, data) => apiClient.put(`/masters/batches/${id}`, data).then(r => r.data),
+    delete: (id) => apiClient.delete(`/masters/batches/${id}`).then(r => r.data)
   },
   costCentres: {
     list: () => apiClient.get('/masters/cost-centres').then(r => r.data),
-    create: (data) => apiClient.post('/masters/cost-centres', data).then(r => r.data)
+    create: (data) => apiClient.post('/masters/cost-centres', data).then(r => r.data),
+    update: (id, data) => apiClient.put(`/masters/cost-centres/${id}`, data).then(r => r.data),
+    delete: (id) => apiClient.delete(`/masters/cost-centres/${id}`).then(r => r.data)
   },
 
   // ── Billing (Sales / Purchases / Payments) ─────────────────
@@ -73,6 +77,7 @@ export const tallyApi = {
     accounts: {
       list: () => apiClient.get('/banking/accounts').then(r => r.data),
       create: (data) => apiClient.post('/banking/accounts', data).then(r => r.data),
+      update: (id, data) => apiClient.put(`/banking/accounts/${id}`, data).then(r => r.data),
       statement: (id, params) => apiClient.get(`/banking/accounts/${id}/statement`, { params }).then(r => r.data),
       pending: (id) => apiClient.get(`/banking/accounts/${id}/reconciliation`).then(r => r.data),
       reconcile: (id, data) => apiClient.post(`/banking/accounts/${id}/reconciliation`, data).then(r => r.data)

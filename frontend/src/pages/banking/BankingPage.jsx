@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tallyApi } from '../../api/tally.api';
-import { PiggyBank, Plus, CheckCircle, Search, Calendar, FileSpreadsheet, Loader2, ArrowRight } from 'lucide-react';
+import { PiggyBank, Plus, Edit2, CheckCircle, Search, Calendar, FileSpreadsheet, Loader2, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate, formatRupees } from '../../utils/format';
 
@@ -12,6 +12,7 @@ export default function BankingPage() {
 
   // Modal States
   const [accountModal, setAccountModal] = useState(false);
+  const [editingAccountId, setEditingAccountId] = useState(null);
   const [accountForm, setAccountForm] = useState({ name: '', ledgerId: '', bankName: '', accountNumber: '', ifsc: '', branch: '', openingBalance: '0' });
 
   // Date filters for Bank Statement lookup
@@ -54,6 +55,19 @@ export default function BankingPage() {
     onError: (err) => toast.error(err.response?.data?.message || 'Error creating bank account')
   });
 
+  const updateAccountMut = useMutation({
+    mutationFn: ({ id, data }) => tallyApi.banking.accounts.update(id, data),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['bank-accounts'] });
+      toast.success('Bank Account updated');
+      setAccountModal(false);
+      setEditingAccountId(null);
+      setAccountForm({ name: '', ledgerId: '', bankName: '', accountNumber: '', ifsc: '', branch: '', openingBalance: '0' });
+      if (selectedAccount && res?.data) setSelectedAccount(res.data);
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Error updating bank account')
+  });
+
   const reconcileMut = useMutation({
     mutationFn: ({ accountId, lineId, data }) => tallyApi.banking.accounts.reconcile(accountId, { voucherLineId: lineId, ...data }),
     onSuccess: () => {
@@ -65,12 +79,31 @@ export default function BankingPage() {
   });
 
   // ── Handlers ──────────────────────────────────────────────────
+  const openAccountModal = (acc) => {
+    if (acc) {
+      setEditingAccountId(acc.id);
+      setAccountForm({
+        name: acc.name, ledgerId: acc.ledgerId, bankName: acc.bankName, accountNumber: acc.accountNumber,
+        ifsc: acc.ifsc || '', branch: acc.branch || '', openingBalance: String(Number(acc.openingBalance) / 100)
+      });
+    } else {
+      setEditingAccountId(null);
+      setAccountForm({ name: '', ledgerId: '', bankName: '', accountNumber: '', ifsc: '', branch: '', openingBalance: '0' });
+    }
+    setAccountModal(true);
+  };
+
   const handleAccountSubmit = (e) => {
     e.preventDefault();
-    createAccountMut.mutate({
+    const payload = {
       ...accountForm,
       openingBalance: Number(accountForm.openingBalance) * 100 // to paise
-    });
+    };
+    if (editingAccountId) {
+      updateAccountMut.mutate({ id: editingAccountId, data: payload });
+    } else {
+      createAccountMut.mutate(payload);
+    }
   };
 
   const handleReconcile = (lineId, transactionDate) => {
@@ -90,7 +123,7 @@ export default function BankingPage() {
         </div>
         {!selectedAccount && (
           <button
-            onClick={() => setAccountModal(true)}
+            onClick={() => openAccountModal(null)}
             className="flex items-center gap-1.5 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-sm transition cursor-pointer"
           >
             <Plus className="h-4.5 w-4.5" />
@@ -115,7 +148,15 @@ export default function BankingPage() {
                   <div className="h-10 w-10 rounded-lg bg-amber-500/10 flex items-center justify-center border border-amber-500/20 text-amber-500">
                     <PiggyBank className="h-5 w-5" />
                   </div>
-                  <span className="text-[10px] font-bold text-gray-500 font-mono tracking-wider">{acc.ifsc}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-gray-500 font-mono tracking-wider">{acc.ifsc}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openAccountModal(acc); }}
+                      className="text-gray-500 hover:text-amber-500 transition cursor-pointer"
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <h4 className="font-bold text-white text-base">{acc.name}</h4>
@@ -294,7 +335,7 @@ export default function BankingPage() {
       {accountModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="glass max-w-md w-full p-6 rounded-xl border border-gray-800">
-            <h3 className="text-base font-bold text-white mb-4">Link Corporate Bank Account</h3>
+            <h3 className="text-base font-bold text-white mb-4">{editingAccountId ? 'Edit Bank Account' : 'Link Corporate Bank Account'}</h3>
             <form onSubmit={handleAccountSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Account Label / Name</label>
@@ -307,7 +348,7 @@ export default function BankingPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">General Ledger Map</label>
-                  <select required value={accountForm.ledgerId} onChange={e => setAccountForm({ ...accountForm, ledgerId: e.target.value })} className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white outline-none text-sm">
+                  <select required disabled={!!editingAccountId} value={accountForm.ledgerId} onChange={e => setAccountForm({ ...accountForm, ledgerId: e.target.value })} className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white outline-none text-sm disabled:opacity-40">
                     <option value="">Select Bank Ledger...</option>
                     {bankLedgers.map(l => (
                       <option key={l.id} value={l.id}>{l.name}</option>
@@ -318,7 +359,7 @@ export default function BankingPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Account Number</label>
-                  <input type="text" required value={accountForm.accountNumber} onChange={e => setAccountForm({ ...accountForm, accountNumber: e.target.value })} placeholder="3000412345" className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white placeholder-gray-600 outline-none text-sm font-mono" />
+                  <input type="text" required disabled={!!editingAccountId} value={accountForm.accountNumber} onChange={e => setAccountForm({ ...accountForm, accountNumber: e.target.value })} placeholder="3000412345" className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white placeholder-gray-600 outline-none text-sm font-mono disabled:opacity-40" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">IFSC Routing Code</label>
@@ -335,9 +376,12 @@ export default function BankingPage() {
                   <input type="number" value={accountForm.openingBalance} onChange={e => setAccountForm({ ...accountForm, openingBalance: e.target.value })} className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white outline-none text-sm font-mono" />
                 </div>
               </div>
+              {editingAccountId && (
+                <p className="text-[10px] text-gray-500">Ledger mapping and account number are locked after creation.</p>
+              )}
               <div className="flex justify-end gap-3 pt-3">
-                <button type="button" onClick={() => setAccountModal(false)} className="px-4 py-2 border border-gray-800 text-gray-400 hover:text-white rounded-lg text-xs">Cancel</button>
-                <button type="submit" disabled={createAccountMut.isPending} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-xs">Save Account</button>
+                <button type="button" onClick={() => { setAccountModal(false); setEditingAccountId(null); }} className="px-4 py-2 border border-gray-800 text-gray-400 hover:text-white rounded-lg text-xs">Cancel</button>
+                <button type="submit" disabled={createAccountMut.isPending || updateAccountMut.isPending} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-xs">{editingAccountId ? 'Update Account' : 'Save Account'}</button>
               </div>
             </form>
           </div>

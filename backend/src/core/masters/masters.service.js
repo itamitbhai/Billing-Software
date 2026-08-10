@@ -294,6 +294,43 @@ export async function createCostCentre(companyId, { name, parentId }) {
   });
 }
 
+export async function updateCostCentre(companyId, id, { name, parentId }) {
+  const costCentre = await prisma.costCentre.findFirst({ where: { id, companyId } });
+  if (!costCentre) {
+    const err = new Error('Cost centre not found.');
+    err.status = 404;
+    throw err;
+  }
+  if (parentId === id) {
+    const err = new Error('A cost centre cannot be its own parent.');
+    err.status = 400;
+    throw err;
+  }
+  return prisma.costCentre.update({
+    where: { id },
+    data: {
+      name: name ?? costCentre.name,
+      parentId: parentId !== undefined ? parentId : costCentre.parentId,
+    },
+  });
+}
+
+export async function deleteCostCentre(companyId, id) {
+  const costCentre = await prisma.costCentre.findFirst({ where: { id, companyId } });
+  if (!costCentre) {
+    const err = new Error('Cost centre not found.');
+    err.status = 404;
+    throw err;
+  }
+  const hasVouchers = await prisma.voucherLine.findFirst({ where: { costCentreId: id } });
+  if (hasVouchers) {
+    const err = new Error('Cannot delete cost centre with existing voucher postings.');
+    err.status = 400;
+    throw err;
+  }
+  return prisma.costCentre.delete({ where: { id } });
+}
+
 // ============================================
 // SYNC (external VS Arogya integration)
 // ============================================

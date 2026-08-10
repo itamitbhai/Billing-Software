@@ -1,13 +1,17 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tallyApi } from '../../api/tally.api';
-import { Plus, Trash2, Save, Undo2, Calculator } from 'lucide-react';
+import { Plus, Trash2, Save, Undo2, Calculator, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatRupees } from '../../utils/format';
 
+const MANUAL_TYPES = ['JOURNAL', 'CONTRA', 'CREDIT_NOTE', 'DEBIT_NOTE'];
+
 export default function VoucherForm() {
   const navigate = useNavigate();
+  const { id } = useParams();
+  const isEditMode = !!id;
   const queryClient = useQueryClient();
 
   const [type, setType] = useState('JOURNAL');
@@ -25,10 +29,37 @@ export default function VoucherForm() {
   const { data: ledgersRes } = useQuery({ queryKey: ['ledgers'], queryFn: () => tallyApi.ledgers.list() });
   const { data: partiesRes } = useQuery({ queryKey: ['parties'], queryFn: () => tallyApi.parties.list() });
   const { data: costCentresRes } = useQuery({ queryKey: ['cost-centres'], queryFn: tallyApi.costCentres.list });
+  const { data: voucherRes, isLoading: voucherLoading } = useQuery({
+    queryKey: ['voucher', id],
+    queryFn: () => tallyApi.vouchers.get(id),
+    enabled: isEditMode
+  });
 
   const ledgers = ledgersRes?.data || [];
   const parties = partiesRes?.data || [];
   const costCentres = costCentresRes?.data || [];
+
+  // Prefill the form once the voucher being edited has loaded.
+  useEffect(() => {
+    const voucher = voucherRes?.data;
+    if (!voucher) return;
+    if (!MANUAL_TYPES.includes(voucher.type)) {
+      toast.error('Only manually posted vouchers (Journal/Contra/Credit/Debit Note) can be edited.');
+      navigate('/vouchers');
+      return;
+    }
+    setType(voucher.type);
+    setDate(new Date(voucher.date).toISOString().split('T')[0]);
+    setNarration(voucher.narration || '');
+    setPartyId(voucher.partyId || '');
+    setLines((voucher.lines || []).map(l => ({
+      ledgerId: l.ledgerId,
+      type: l.type,
+      amount: String(Number(l.amount) / 100),
+      description: l.description || '',
+      costCentreId: l.costCentreId || ''
+    })));
+  }, [voucherRes, navigate]);
 
   // ── Mutations ─────────────────────────────────────────────────
   const createVoucherMut = useMutation({
@@ -39,6 +70,16 @@ export default function VoucherForm() {
       navigate('/vouchers');
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Error posting voucher')
+  });
+
+  const updateVoucherMut = useMutation({
+    mutationFn: (data) => tallyApi.vouchers.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vouchers'] });
+      toast.success('Voucher updated successfully');
+      navigate('/vouchers');
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Error updating voucher')
   });
 
   // ── Calculations ──────────────────────────────────────────────
@@ -74,20 +115,32 @@ export default function VoucherForm() {
       costCentreId: l.costCentreId || null,
     }));
 
-    createVoucherMut.mutate({
-      type,
-      date,
-      narration,
-      partyId: partyId || null,
-      lines: formattedLines
-    });
+    if (isEditMode) {
+      updateVoucherMut.mutate({ date, narration, lines: formattedLines });
+    } else {
+      createVoucherMut.mutate({
+        type,
+        date,
+        narration,
+        partyId: partyId || null,
+        lines: formattedLines
+      });
+    }
   };
+
+  if (isEditMode && voucherLoading) {
+    return (
+      <div className="flex items-center justify-center py-24 text-gray-400">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading voucher...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-white tracking-wide">Post Accounting Voucher</h2>
+          <h2 className="text-xl font-bold text-white tracking-wide">{isEditMode ? 'Edit Accounting Voucher' : 'Post Accounting Voucher'}</h2>
           <p className="text-gray-400 text-xs mt-1">Configure double-entry transaction lines with real-time balance calculations</p>
         </div>
         <button
@@ -105,19 +158,22 @@ export default function VoucherForm() {
             <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Voucher Type</label>
             <select
               value={type}
+              disabled={isEditMode}
               onChange={(e) => setType(e.target.value)}
-              className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2 text-white outline-none text-xs"
+              className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2 text-white outline-none text-xs disabled:opacity-40"
             >
               <option value="JOURNAL">JOURNAL</option>
               <option value="CONTRA">CONTRA</option>
               <option value="CREDIT_NOTE">CREDIT NOTE</option>
               <option value="DEBIT_NOTE">DEBIT NOTE</option>
             </select>
-            <p className="text-[10px] text-gray-500 mt-1.5">
-              Sales, Purchase, Receipt &amp; Payment are posted automatically from{' '}
-              <button type="button" onClick={() => navigate('/sales/new')} className="text-amber-500 hover:underline cursor-pointer">Sales &amp; GST Bills</button>
-              {' '}— they can't be posted manually here.
-            </p>
+            {!isEditMode && (
+              <p className="text-[10px] text-gray-500 mt-1.5">
+                Sales, Purchase, Receipt &amp; Payment are posted automatically from{' '}
+                <button type="button" onClick={() => navigate('/sales/new')} className="text-amber-500 hover:underline cursor-pointer">Sales &amp; GST Bills</button>
+                {' '}— they can't be posted manually here.
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Posting Date</label>
@@ -133,14 +189,18 @@ export default function VoucherForm() {
             <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Ledger Party (Optional)</label>
             <select
               value={partyId}
+              disabled={isEditMode}
               onChange={(e) => setPartyId(e.target.value)}
-              className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2 text-white outline-none text-xs"
+              className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2 text-white outline-none text-xs disabled:opacity-40"
             >
               <option value="">None / Internal Journal</option>
               {parties.map(p => (
                 <option key={p.id} value={p.id}>{p.name} ({p.type})</option>
               ))}
             </select>
+            {isEditMode && (
+              <p className="text-[10px] text-gray-500 mt-1.5">Voucher type and party are locked after posting — only date, narration, and lines can be amended.</p>
+            )}
           </div>
         </div>
 
@@ -261,10 +321,10 @@ export default function VoucherForm() {
           </div>
           <button
             type="submit"
-            disabled={createVoucherMut.isPending || difference !== 0}
+            disabled={createVoucherMut.isPending || updateVoucherMut.isPending || difference !== 0}
             className="w-full md:w-auto flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-bold px-6 py-4 rounded-xl shadow-lg shadow-amber-500/10 transition cursor-pointer disabled:opacity-50"
           >
-            <Save className="h-5 w-5" /> Post Voucher Transaction
+            <Save className="h-5 w-5" /> {isEditMode ? 'Update Voucher' : 'Post Voucher Transaction'}
           </button>
         </div>
       </form>

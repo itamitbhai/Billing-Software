@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import { authApi } from '../../api/auth.api';
 import { Building, Lock, Mail, Loader2 } from 'lucide-react';
@@ -96,11 +96,8 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="text-center text-sm text-gray-500 mt-6">
-          New Company?{' '}
-          <Link to="/register" className="text-amber-500 hover:underline font-medium">
-            Register CEO & Company
-          </Link>
+        <p className="text-center text-xs text-gray-600 mt-6">
+          Access is admin-provisioned only. Contact your administrator for a login.
         </p>
       </div>
     </div>

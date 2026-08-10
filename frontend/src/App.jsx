@@ -4,7 +4,8 @@ import { useAuthStore } from './store/auth.store';
 
 // Auth Pages
 import LoginPage from './pages/auth/LoginPage';
-import RegisterPage from './pages/auth/RegisterPage';
+// RegisterPage is intentionally unrouted — public self-registration is
+// disabled, see backend/src/core/auth/auth.module.js.
 
 // Layout
 import AppShell from './components/layout/AppShell';
@@ -18,6 +19,9 @@ import VoucherForm from './pages/vouchers/VoucherForm';
 import SalesPage from './pages/sales/SalesPage';
 import SaleForm from './pages/sales/SaleForm';
 import InvoicePrint from './pages/sales/InvoicePrint';
+import PurchasesPage from './pages/purchases/PurchasesPage';
+import PurchaseForm from './pages/purchases/PurchaseForm';
+import PaymentsPage from './pages/payments/PaymentsPage';
 import BankingPage from './pages/banking/BankingPage';
 import BalanceSheetPage from './pages/reports/BalanceSheetPage';
 import ProfitLossPage from './pages/reports/ProfitLossPage';
@@ -48,12 +52,6 @@ export default function App() {
             <LoginPage />
           </PublicRoute>
         } />
-        <Route path="/register" element={
-          <PublicRoute>
-            <RegisterPage />
-          </PublicRoute>
-        } />
-
         {/* Protected Gateway Routes */}
         <Route path="/" element={
           <ProtectedRoute>
@@ -99,6 +97,31 @@ export default function App() {
           </ProtectedRoute>
         } />
 
+        {/* Purchases Routing */}
+        <Route path="/purchases" element={
+          <ProtectedRoute>
+            <AppShell>
+              <PurchasesPage />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+        <Route path="/purchases/new" element={
+          <ProtectedRoute>
+            <AppShell>
+              <PurchaseForm />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+
+        {/* Payments Routing */}
+        <Route path="/payments" element={
+          <ProtectedRoute>
+            <AppShell>
+              <PaymentsPage />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+
         {/* Vouchers Routing */}
         <Route path="/vouchers" element={
           <ProtectedRoute>
@@ -108,6 +131,13 @@ export default function App() {
           </ProtectedRoute>
         } />
         <Route path="/vouchers/new" element={
+          <ProtectedRoute>
+            <AppShell>
+              <VoucherForm />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+        <Route path="/vouchers/:id/edit" element={
           <ProtectedRoute>
             <AppShell>
               <VoucherForm />

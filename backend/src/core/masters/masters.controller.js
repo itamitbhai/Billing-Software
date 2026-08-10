@@ -201,6 +201,28 @@ export async function createCostCentre(req, res, next) {
   } catch (err) { next(err); }
 }
 
+export async function updateCostCentre(req, res, next) {
+  try {
+    const costCentre = await mastersService.updateCostCentre(req.user.companyId, req.params.id, req.body);
+    await logAudit({
+      companyId: req.user.companyId, userId: req.user.id, action: 'COST_CENTRE_UPDATE',
+      entityType: 'CostCentre', entityId: costCentre.id, metadata: { name: costCentre.name }, req,
+    });
+    res.json({ success: true, message: 'Cost centre updated successfully.', data: costCentre });
+  } catch (err) { next(err); }
+}
+
+export async function deleteCostCentre(req, res, next) {
+  try {
+    await mastersService.deleteCostCentre(req.user.companyId, req.params.id);
+    await logAudit({
+      companyId: req.user.companyId, userId: req.user.id, action: 'COST_CENTRE_DELETE',
+      entityType: 'CostCentre', entityId: req.params.id, req,
+    });
+    res.json({ success: true, message: 'Cost centre deleted successfully.' });
+  } catch (err) { next(err); }
+}
+
 export async function syncMasters(req, res, next) {
   try {
     const result = await mastersService.syncFromVsArogya(req.user.companyId);

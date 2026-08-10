@@ -31,7 +31,10 @@ export default function GatewayPage() {
     {
       title: 'Transactions & Vouchers',
       items: [
-        { name: 'Vouchers Entry', desc: 'Create Sales, Purchase, Payment, Journal entries', href: '/vouchers' },
+        { name: 'Sales & GST Bills', desc: 'Bill customers and print GST invoices', href: '/sales' },
+        { name: 'Purchases (Stock IN)', desc: 'Record supplier bills and receive stock', href: '/purchases' },
+        { name: 'Payments & Receipts', desc: 'Pay suppliers or receive from customers', href: '/payments' },
+        { name: 'Vouchers Entry', desc: 'Journal, Contra, Credit/Debit Note entries', href: '/vouchers' },
         { name: 'Banking Portal', desc: 'Cheques register, statements and reconciliation', href: '/banking' }
       ]
     },

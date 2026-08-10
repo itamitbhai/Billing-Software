@@ -8,14 +8,15 @@ import { formatRupees } from '../../utils/format';
 export default function AccountsPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('groups');
-  const [editingItem, setEditingItem] = useState(null);
-  
-  // Group creation modal state
+
+  // Group creation/edit modal state
   const [groupModalOpen, setGroupModalOpen] = useState(false);
+  const [editingGroupId, setEditingGroupId] = useState(null);
   const [groupFormData, setGroupFormData] = useState({ name: '', nature: 'ASSET', parentId: '' });
 
-  // Ledger creation modal state
+  // Ledger creation/edit modal state
   const [ledgerModalOpen, setLedgerModalOpen] = useState(false);
+  const [editingLedgerId, setEditingLedgerId] = useState(null);
   const [ledgerFormData, setLedgerFormData] = useState({ name: '', groupId: '', openingBalance: '0', openingBalanceType: 'DEBIT', description: '' });
 
   // ── Queries ───────────────────────────────────────────────────
@@ -49,7 +50,9 @@ export default function AccountsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ledger-groups'] });
       toast.success('Ledger Group updated');
-      setEditingItem(null);
+      setGroupModalOpen(false);
+      setEditingGroupId(null);
+      setGroupFormData({ name: '', nature: 'ASSET', parentId: '' });
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Error updating group')
   });
@@ -83,11 +86,55 @@ export default function AccountsPage() {
     onError: (err) => toast.error(err.response?.data?.message || 'Error deleting ledger')
   });
 
+  const updateLedgerMutation = useMutation({
+    mutationFn: ({ id, data }) => tallyApi.ledgers.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ledgers'] });
+      toast.success('Ledger updated');
+      setLedgerModalOpen(false);
+      setEditingLedgerId(null);
+      setLedgerFormData({ name: '', groupId: '', openingBalance: '0', openingBalanceType: 'DEBIT', description: '' });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Error updating ledger')
+  });
+
   // ── Handlers ──────────────────────────────────────────────────
+  const openGroupModal = (group) => {
+    if (group) {
+      setEditingGroupId(group.id);
+      setGroupFormData({ name: group.name, nature: group.nature, parentId: group.parentId || '' });
+    } else {
+      setEditingGroupId(null);
+      setGroupFormData({ name: '', nature: 'ASSET', parentId: '' });
+    }
+    setGroupModalOpen(true);
+  };
+
+  const openLedgerModal = (ledger) => {
+    if (ledger) {
+      setEditingLedgerId(ledger.id);
+      setLedgerFormData({
+        name: ledger.name,
+        groupId: ledger.groupId,
+        openingBalance: String(Number(ledger.openingBalance) / 100),
+        openingBalanceType: ledger.openingBalanceType,
+        description: ledger.description || ''
+      });
+    } else {
+      setEditingLedgerId(null);
+      setLedgerFormData({ name: '', groupId: '', openingBalance: '0', openingBalanceType: 'DEBIT', description: '' });
+    }
+    setLedgerModalOpen(true);
+  };
+
   const handleGroupSubmit = (e) => {
     e.preventDefault();
     if (!groupFormData.name) return toast.error('Group name required');
-    createGroupMutation.mutate(groupFormData);
+    if (editingGroupId) {
+      updateGroupMutation.mutate({ id: editingGroupId, data: groupFormData });
+    } else {
+      createGroupMutation.mutate(groupFormData);
+    }
   };
 
   const handleLedgerSubmit = (e) => {
@@ -95,10 +142,15 @@ export default function AccountsPage() {
     if (!ledgerFormData.name || !ledgerFormData.groupId) {
       return toast.error('Name and Group are required');
     }
-    createLedgerMutation.mutate({
+    const payload = {
       ...ledgerFormData,
       openingBalance: Number(ledgerFormData.openingBalance) * 100 // convert to paise
-    });
+    };
+    if (editingLedgerId) {
+      updateLedgerMutation.mutate({ id: editingLedgerId, data: payload });
+    } else {
+      createLedgerMutation.mutate(payload);
+    }
   };
 
   return (
@@ -110,14 +162,14 @@ export default function AccountsPage() {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={() => setGroupModalOpen(true)}
+            onClick={() => openGroupModal(null)}
             className="flex items-center gap-1.5 px-4 py-2 bg-[#111827] border border-gray-800 text-gray-300 hover:text-white rounded-lg text-sm transition cursor-pointer"
           >
             <Plus className="h-4 w-4 text-amber-500" />
             Add Group
           </button>
           <button
-            onClick={() => setLedgerModalOpen(true)}
+            onClick={() => openLedgerModal(null)}
             className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-sm transition cursor-pointer"
           >
             <Plus className="h-4 w-4" />
@@ -174,12 +226,20 @@ export default function AccountsPage() {
                     </div>
                     <div className="flex items-center justify-end gap-3 text-gray-400">
                       {!group.isSystem && (
-                        <button
-                          onClick={() => deleteGroupMutation.mutate(group.id)}
-                          className="hover:text-red-400 transition"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <>
+                          <button
+                            onClick={() => openGroupModal(group)}
+                            className="hover:text-amber-500 transition"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => deleteGroupMutation.mutate(group.id)}
+                            className="hover:text-red-400 transition"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </>
                       )}
                       {group.isSystem && (
                         <span className="text-[10px] font-semibold text-gray-600 bg-gray-800/30 px-1.5 py-0.5 rounded">System</span>
@@ -219,12 +279,20 @@ export default function AccountsPage() {
                     </div>
                     <div className="flex items-center justify-end gap-3 text-gray-400">
                       {!ledger.isSystem && (
-                        <button
-                          onClick={() => deleteLedgerMutation.mutate(ledger.id)}
-                          className="hover:text-red-400 transition"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <>
+                          <button
+                            onClick={() => openLedgerModal(ledger)}
+                            className="hover:text-amber-500 transition"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => deleteLedgerMutation.mutate(ledger.id)}
+                            className="hover:text-red-400 transition"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </>
                       )}
                       {ledger.isSystem && (
                         <span className="text-[10px] font-semibold text-gray-600 bg-gray-800/30 px-1.5 py-0.5 rounded">System</span>
@@ -242,7 +310,7 @@ export default function AccountsPage() {
       {groupModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="glass max-w-md w-full p-6 rounded-xl border border-gray-800">
-            <h3 className="text-base font-bold text-white mb-4">Add Ledger Group</h3>
+            <h3 className="text-base font-bold text-white mb-4">{editingGroupId ? 'Edit Ledger Group' : 'Add Ledger Group'}</h3>
             <form onSubmit={handleGroupSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Group Name</label>
@@ -287,17 +355,17 @@ export default function AccountsPage() {
               <div className="flex justify-end gap-3 pt-3">
                 <button
                   type="button"
-                  onClick={() => setGroupModalOpen(false)}
+                  onClick={() => { setGroupModalOpen(false); setEditingGroupId(null); }}
                   className="px-4 py-2 border border-gray-800 text-gray-400 hover:text-white rounded-lg text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={createGroupMutation.isPending}
+                  disabled={createGroupMutation.isPending || updateGroupMutation.isPending}
                   className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-xs"
                 >
-                  Create Group
+                  {editingGroupId ? 'Update Group' : 'Create Group'}
                 </button>
               </div>
             </form>
@@ -309,7 +377,7 @@ export default function AccountsPage() {
       {ledgerModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="glass max-w-md w-full p-6 rounded-xl border border-gray-800">
-            <h3 className="text-base font-bold text-white mb-4">Create Ledger Account</h3>
+            <h3 className="text-base font-bold text-white mb-4">{editingLedgerId ? 'Edit Ledger Account' : 'Create Ledger Account'}</h3>
             <form onSubmit={handleLedgerSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Ledger Name</label>
@@ -371,17 +439,17 @@ export default function AccountsPage() {
               <div className="flex justify-end gap-3 pt-3">
                 <button
                   type="button"
-                  onClick={() => setLedgerModalOpen(false)}
+                  onClick={() => { setLedgerModalOpen(false); setEditingLedgerId(null); }}
                   className="px-4 py-2 border border-gray-800 text-gray-400 hover:text-white rounded-lg text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={createLedgerMutation.isPending}
+                  disabled={createLedgerMutation.isPending || updateLedgerMutation.isPending}
                   className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-xs"
                 >
-                  Create Ledger
+                  {editingLedgerId ? 'Update Ledger' : 'Create Ledger'}
                 </button>
               </div>
             </form>

@@ -1,0 +1,317 @@
+import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { tallyApi } from '../../api/tally.api';
+import { Plus, Trash2, Save, Undo2, Package } from 'lucide-react';
+import { toast } from 'sonner';
+import { formatCurrency } from '../../utils/format';
+
+const emptyRow = () => ({ productId: '', batchId: '', qty: '1', rate: '' });
+
+export default function PurchaseForm() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const [supplierId, setSupplierId] = useState('');
+  const [billNumber, setBillNumber] = useState('');
+  const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
+  const [reverseCharge, setReverseCharge] = useState(false);
+  const [rows, setRows] = useState([emptyRow()]);
+
+  // ── Queries ───────────────────────────────────────────────────
+  const { data: partiesRes } = useQuery({ queryKey: ['parties'], queryFn: () => tallyApi.parties.list() });
+  const { data: productsRes } = useQuery({ queryKey: ['stock-items'], queryFn: tallyApi.stockItems.list });
+  const { data: companyRes } = useQuery({ queryKey: ['company-profile'], queryFn: tallyApi.utilities.company.get });
+  const { data: batchesRes } = useQuery({ queryKey: ['batches-all'], queryFn: () => tallyApi.batches.list() });
+
+  const suppliers = (partiesRes?.data || []).filter(p => p.type === 'SUPPLIER' || p.type === 'BOTH');
+  const products = productsRes?.data || [];
+  const company = companyRes?.data;
+  const allBatches = batchesRes?.data || [];
+
+  const selectedSupplier = suppliers.find(s => s.id === supplierId);
+  const isIntraState = !company?.state || !selectedSupplier?.state
+    || company.state.trim().toLowerCase() === selectedSupplier.state.trim().toLowerCase();
+
+  // ── Mutations ─────────────────────────────────────────────────
+  const createPurchaseMut = useMutation({
+    mutationFn: tallyApi.billing.purchases.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['stock-items'] });
+      toast.success('Purchase bill recorded and stock updated');
+      navigate('/purchases');
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Error recording purchase'),
+  });
+
+  // ── Row helpers ───────────────────────────────────────────────
+  const batchesForProduct = (productId) => allBatches.filter(b => b.productId === productId);
+
+  const addRow = () => setRows([...rows, emptyRow()]);
+  const removeRow = (idx) => {
+    if (rows.length <= 1) return;
+    setRows(rows.filter((_, i) => i !== idx));
+  };
+
+  const updateRow = (idx, field, value) => {
+    const updated = [...rows];
+    const row = { ...updated[idx], [field]: value };
+
+    if (field === 'productId') {
+      row.batchId = '';
+    }
+    updated[idx] = row;
+    setRows(updated);
+  };
+
+  // ── Priced preview (mirrors backend priceItems logic) ──────────
+  const pricedRows = useMemo(() => rows.map((row) => {
+    const product = products.find(p => p.id === row.productId);
+    const batch = allBatches.find(b => b.id === row.batchId);
+    const qty = Number(row.qty) || 0;
+    const rate = Number(row.rate) || 0;
+    const gstRate = Number(product?.gstRate || 0);
+    const taxableValue = qty * rate;
+    const gstAmount = (taxableValue * gstRate) / 100;
+    return {
+      product, batch, qty, rate, gstRate,
+      taxableValue, gstAmount,
+      amount: taxableValue + gstAmount,
+    };
+  }), [rows, products, allBatches]);
+
+  const totals = pricedRows.reduce((acc, r) => ({
+    subTotal: acc.subTotal + r.taxableValue,
+    gstAmount: acc.gstAmount + r.gstAmount,
+    totalAmount: acc.totalAmount + r.amount,
+  }), { subTotal: 0, gstAmount: 0, totalAmount: 0 });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!supplierId) return toast.error('Please select a supplier.');
+    if (!billNumber) return toast.error('Please enter the supplier\'s bill number.');
+    if (!rows.length || rows.some(r => !r.batchId || !r.qty || !r.rate)) {
+      return toast.error('Every line requires a product, batch, quantity, and rate.');
+    }
+
+    createPurchaseMut.mutate({
+      supplierId,
+      billNumber,
+      purchaseDate,
+      reverseCharge,
+      items: rows.map(r => ({
+        batchId: r.batchId,
+        qty: Number(r.qty),
+        rate: Number(r.rate),
+      })),
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-white tracking-wide">New Purchase Bill</h2>
+          <p className="text-gray-400 text-xs mt-1">Record stock received from a supplier — selected batches increment and Input GST posts automatically</p>
+        </div>
+        <button
+          onClick={() => navigate('/purchases')}
+          className="flex items-center gap-1.5 px-3 py-2 border border-gray-800 text-gray-400 hover:text-white rounded-lg text-xs cursor-pointer"
+        >
+          <Undo2 className="h-4 w-4" /> Cancel & Back
+        </button>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Header fields */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-[#111827]/40 p-4 rounded-xl border border-gray-800">
+          <div className="md:col-span-2">
+            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Supplier</label>
+            <select
+              required
+              value={supplierId}
+              onChange={(e) => setSupplierId(e.target.value)}
+              className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2 text-white outline-none text-xs"
+            >
+              <option value="">Select supplier...</option>
+              {suppliers.map(s => (
+                <option key={s.id} value={s.id}>{s.name} {s.gstin ? `(${s.gstin})` : ''}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Supplier Bill No.</label>
+            <input
+              type="text"
+              required
+              value={billNumber}
+              onChange={(e) => setBillNumber(e.target.value)}
+              placeholder="INV-2026-0451"
+              className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2 text-white placeholder-gray-600 outline-none text-xs"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Purchase Date</label>
+            <input
+              type="date"
+              required
+              value={purchaseDate}
+              onChange={(e) => setPurchaseDate(e.target.value)}
+              className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2 text-white outline-none text-xs"
+            />
+          </div>
+          <div className="md:col-span-2 flex items-end">
+            <div className={`w-full text-center py-2 rounded-lg text-xs font-bold border ${
+              isIntraState ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+            }`}>
+              {isIntraState ? 'Intra-State — CGST + SGST applies' : 'Inter-State — IGST applies'}
+            </div>
+          </div>
+          <div className="md:col-span-2 flex items-center">
+            <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={reverseCharge}
+                onChange={(e) => setReverseCharge(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-800 bg-[#0d1224] accent-amber-500"
+              />
+              Tax payable under Reverse Charge (RCM)
+            </label>
+          </div>
+        </div>
+
+        {/* Item Lines */}
+        <div className="glass rounded-xl border border-gray-800 overflow-hidden">
+          <div className="px-5 py-3.5 bg-[#111827]/40 border-b border-gray-800 flex justify-between items-center">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-amber-500">Received Item Lines</h3>
+            <button
+              type="button"
+              onClick={addRow}
+              className="flex items-center gap-1 text-[10px] font-bold bg-amber-500/10 text-amber-500 px-2.5 py-1 rounded border border-amber-500/20 hover:bg-amber-500 hover:text-[#0a0e1a] cursor-pointer"
+            >
+              <Plus className="h-3 w-3" /> Add Item
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="text-gray-400 font-bold uppercase border-b border-gray-800">
+                  <th className="p-3">Product</th>
+                  <th className="p-3">Batch (Expiry / MRP / Stock)</th>
+                  <th className="p-3 w-20">Qty</th>
+                  <th className="p-3 w-28">Rate (₹)</th>
+                  <th className="p-3 w-16 text-right">GST%</th>
+                  <th className="p-3 w-28 text-right">Taxable</th>
+                  <th className="p-3 w-28 text-right">Amount</th>
+                  <th className="p-3 w-10"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-800/40">
+                {rows.map((row, idx) => {
+                  const priced = pricedRows[idx];
+                  const availableBatches = batchesForProduct(row.productId);
+                  return (
+                    <tr key={idx}>
+                      <td className="p-2 min-w-[180px]">
+                        <select
+                          required
+                          value={row.productId}
+                          onChange={(e) => updateRow(idx, 'productId', e.target.value)}
+                          className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-1.5 text-white outline-none text-xs"
+                        >
+                          <option value="">Select product...</option>
+                          {products.map(p => (
+                            <option key={p.id} value={p.id}>{p.name} {p.hsnCode ? `[HSN ${p.hsnCode}]` : ''}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="p-2 min-w-[220px]">
+                        <select
+                          required
+                          disabled={!row.productId}
+                          value={row.batchId}
+                          onChange={(e) => updateRow(idx, 'batchId', e.target.value)}
+                          className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-1.5 text-white outline-none text-xs disabled:opacity-40"
+                        >
+                          <option value="">Select batch...</option>
+                          {availableBatches.map(b => (
+                            <option key={b.id} value={b.id}>
+                              {b.batchNumber} · Exp {new Date(b.expiryDate).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })} · MRP ₹{formatCurrency(b.mrp)} · Qty {b.currentQty}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="number" min="1" required
+                          value={row.qty}
+                          onChange={(e) => updateRow(idx, 'qty', e.target.value)}
+                          className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-1.5 text-white outline-none text-xs font-mono"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="number" step="0.01" min="0" required
+                          value={row.rate}
+                          onChange={(e) => updateRow(idx, 'rate', e.target.value)}
+                          className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-1.5 text-white outline-none text-xs font-mono"
+                        />
+                      </td>
+                      <td className="p-2 text-right font-mono text-gray-400">{priced.gstRate}%</td>
+                      <td className="p-2 text-right font-mono text-gray-300">{formatCurrency(priced.taxableValue)}</td>
+                      <td className="p-2 text-right font-mono font-semibold text-white">{formatCurrency(priced.amount)}</td>
+                      <td className="p-2 text-right">
+                        <button type="button" onClick={() => removeRow(idx)} className="text-gray-500 hover:text-red-400 transition cursor-pointer">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {products.length === 0 && (
+            <div className="flex items-center gap-2 text-xs text-gray-500 p-4 border-t border-gray-800/60">
+              <Package className="h-4 w-4" /> No stock items found — add medicines under Masters Management first.
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 text-[10px] text-gray-500 px-4 py-3 border-t border-gray-800/60">
+            <Package className="h-3.5 w-3.5 shrink-0" />
+            Receiving a brand-new batch number? Add it first under Masters → Stock Items → Add Batch, then select it here.
+          </div>
+
+          {/* Totals footer */}
+          <div className="bg-[#111827]/40 border-t border-gray-800 p-5 flex flex-col md:flex-row md:justify-end gap-6 text-xs font-mono">
+            <div className="text-right">
+              <span className="text-gray-400 block">Taxable Value</span>
+              <span className="text-white font-bold text-sm">₹{formatCurrency(totals.subTotal)}</span>
+            </div>
+            <div className="text-right">
+              <span className="text-gray-400 block">{isIntraState ? 'CGST + SGST' : 'IGST'}</span>
+              <span className="text-white font-bold text-sm">₹{formatCurrency(totals.gstAmount)}</span>
+            </div>
+            <div className="text-right">
+              <span className="text-gray-400 block">Total Payable</span>
+              <span className="text-amber-500 font-bold text-base">₹{formatCurrency(totals.totalAmount)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={createPurchaseMut.isPending}
+            className="w-full md:w-auto flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-bold px-6 py-4 rounded-xl shadow-lg shadow-amber-500/10 transition cursor-pointer disabled:opacity-50"
+          >
+            <Save className="h-5 w-5" /> Save Purchase Bill
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}

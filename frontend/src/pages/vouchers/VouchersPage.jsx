@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tallyApi } from '../../api/tally.api';
-import { Receipt, Plus, Search, Calendar, ChevronLeft, ChevronRight, Eye, Trash2, Loader2 } from 'lucide-react';
+import { Receipt, Plus, Search, Calendar, ChevronLeft, ChevronRight, Eye, Edit2, Trash2, Loader2 } from 'lucide-react';
 import { formatDate, formatRupees } from '../../utils/format';
 import { toast } from 'sonner';
+
+const MANUAL_TYPES = ['JOURNAL', 'CONTRA', 'CREDIT_NOTE', 'DEBIT_NOTE'];
 
 export default function VouchersPage() {
   const navigate = useNavigate();
@@ -155,7 +157,12 @@ export default function VouchersPage() {
                           <td className="py-3 text-right font-mono font-semibold text-white">{formatRupees(totalAmt)}</td>
                           <td className="py-3 text-right">
                             <div className="flex items-center justify-end gap-2 text-gray-400">
-                              <button onClick={() => handleViewDetails(v.id)} className="hover:text-amber-500 transition cursor-pointer">
+                              {MANUAL_TYPES.includes(v.type) && (
+                                <button onClick={() => navigate(`/vouchers/${v.id}/edit`)} title="Edit Voucher" className="hover:text-amber-500 transition cursor-pointer">
+                                  <Edit2 className="h-4 w-4" />
+                                </button>
+                              )}
+                              <button onClick={() => handleViewDetails(v.id)} title="View Details" className="hover:text-amber-500 transition cursor-pointer">
                                 <Eye className="h-4 w-4" />
                               </button>
                             </div>
@@ -245,7 +252,15 @@ export default function VouchersPage() {
               )}
             </div>
 
-            <div className="border-t border-gray-800 pt-4">
+            <div className="border-t border-gray-800 pt-4 space-y-2">
+              {MANUAL_TYPES.includes(selectedVoucher.type) && (
+                <button
+                  onClick={() => navigate(`/vouchers/${selectedVoucher.id}/edit`)}
+                  className="w-full flex items-center justify-center gap-1.5 bg-amber-500/10 hover:bg-amber-500 text-amber-500 hover:text-[#0a0e1a] font-semibold py-2.5 rounded-lg text-xs transition cursor-pointer"
+                >
+                  <Edit2 className="h-4 w-4" /> Edit Voucher
+                </button>
+              )}
               <button
                 onClick={() => {
                   if (window.confirm('Are you sure you want to cancel this voucher transaction?')) {

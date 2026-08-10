@@ -40,6 +40,8 @@ mastersRouter.delete('/batches/:id',   WRITE, mastersController.deleteBatch);
 // ── Cost Centres ──────────────────────────────────────────────────────────────
 mastersRouter.get('/cost-centres',              mastersController.listCostCentres);
 mastersRouter.post('/cost-centres',        WRITE, mastersController.createCostCentre);
+mastersRouter.put('/cost-centres/:id',     WRITE, mastersController.updateCostCentre);
+mastersRouter.delete('/cost-centres/:id',  WRITE, mastersController.deleteCostCentre);
 
 // ── Integration Sync ──────────────────────────────────────────────────────────
 mastersRouter.post('/sync',            ADMIN, mastersController.syncMasters);

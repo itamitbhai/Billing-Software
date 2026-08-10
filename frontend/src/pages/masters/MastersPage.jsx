@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tallyApi } from '../../api/tally.api';
-import { Plus, Trash2, Loader2, Users, Package } from 'lucide-react';
+import { Plus, Trash2, Edit2, Loader2, Users, Package, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency } from '../../utils/format';
 
@@ -11,22 +11,31 @@ export default function MastersPage() {
 
   // Modal States
   const [partyModal, setPartyModal] = useState(false);
+  const [editingPartyId, setEditingPartyId] = useState(null);
   const [partyForm, setPartyForm] = useState({ name: '', type: 'CUSTOMER', gstin: '', dlNumber: '', phone: '', email: '', address: '', state: '', creditLimit: '0', creditDays: 0 });
   const [selectedParty, setSelectedParty] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
 
   const [itemModal, setItemModal] = useState(false);
+  const [editingProductId, setEditingProductId] = useState(null);
   const [itemForm, setItemForm] = useState({ name: '', price: '', unit: 'PCS', hsnCode: '', gstRate: '0', reorderLevel: '0' });
 
   const [batchModal, setBatchModal] = useState(false);
+  const [editingBatchId, setEditingBatchId] = useState(null);
   const [batchForm, setBatchForm] = useState({ batchNumber: '', expiryDate: '', mrp: '', currentQty: '0' });
+
+  const [costCentreModal, setCostCentreModal] = useState(false);
+  const [editingCostCentreId, setEditingCostCentreId] = useState(null);
+  const [costCentreForm, setCostCentreForm] = useState({ name: '', parentId: '' });
 
   // ── Queries ───────────────────────────────────────────────────
   const { data: partiesRes, isLoading: partiesLoading } = useQuery({ queryKey: ['parties'], queryFn: () => tallyApi.parties.list() });
   const { data: itemsRes, isLoading: itemsLoading } = useQuery({ queryKey: ['stock-items'], queryFn: tallyApi.stockItems.list });
+  const { data: costCentresRes, isLoading: costCentresLoading } = useQuery({ queryKey: ['cost-centres'], queryFn: tallyApi.costCentres.list, enabled: activeTab === 'costCentres' });
 
   const parties = partiesRes?.data || [];
   const items = itemsRes?.data || [];
+  const costCentres = costCentresRes?.data || [];
 
   // ── Mutations ─────────────────────────────────────────────────
   const createPartyMut = useMutation({
@@ -46,6 +55,18 @@ export default function MastersPage() {
     onError: (err) => toast.error(err.response?.data?.message || 'Error deleting party')
   });
 
+  const updatePartyMut = useMutation({
+    mutationFn: ({ id, data }) => tallyApi.parties.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['parties'] });
+      toast.success('Party updated');
+      setPartyModal(false);
+      setEditingPartyId(null);
+      setPartyForm({ name: '', type: 'CUSTOMER', gstin: '', dlNumber: '', phone: '', email: '', address: '', state: '', creditLimit: '0', creditDays: 0 });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Error updating party')
+  });
+
   const createItemMut = useMutation({
     mutationFn: tallyApi.stockItems.create,
     onSuccess: () => {
@@ -63,6 +84,18 @@ export default function MastersPage() {
     onError: (err) => toast.error(err.response?.data?.message || 'Error deleting item')
   });
 
+  const updateItemMut = useMutation({
+    mutationFn: ({ id, data }) => tallyApi.stockItems.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock-items'] });
+      toast.success('Stock Item updated');
+      setItemModal(false);
+      setEditingProductId(null);
+      setItemForm({ name: '', price: '', unit: 'PCS', hsnCode: '', gstRate: '0', reorderLevel: '0' });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Error updating item')
+  });
+
   const createBatchMut = useMutation({
     mutationFn: tallyApi.batches.create,
     onSuccess: async () => {
@@ -78,34 +111,173 @@ export default function MastersPage() {
     onError: (err) => toast.error(err.response?.data?.message || 'Error adding batch')
   });
 
+  const updateBatchMut = useMutation({
+    mutationFn: ({ id, data }) => tallyApi.batches.update(id, data),
+    onSuccess: async () => {
+      queryClient.invalidateQueries({ queryKey: ['stock-items'] });
+      toast.success('Batch updated');
+      setBatchModal(false);
+      setEditingBatchId(null);
+      setBatchForm({ batchNumber: '', expiryDate: '', mrp: '', currentQty: '0' });
+      if (selectedItem) {
+        const fresh = await tallyApi.stockItems.get(selectedItem.id);
+        setSelectedItem(fresh.data);
+      }
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Error updating batch')
+  });
+
+  const deleteBatchMut = useMutation({
+    mutationFn: tallyApi.batches.delete,
+    onSuccess: async () => {
+      queryClient.invalidateQueries({ queryKey: ['stock-items'] });
+      toast.success('Batch deleted');
+      if (selectedItem) {
+        const fresh = await tallyApi.stockItems.get(selectedItem.id);
+        setSelectedItem(fresh.data);
+      }
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Error deleting batch')
+  });
+
+  const createCostCentreMut = useMutation({
+    mutationFn: tallyApi.costCentres.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cost-centres'] });
+      toast.success('Cost Centre created');
+      setCostCentreModal(false);
+      setCostCentreForm({ name: '', parentId: '' });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Error creating cost centre')
+  });
+
+  const updateCostCentreMut = useMutation({
+    mutationFn: ({ id, data }) => tallyApi.costCentres.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cost-centres'] });
+      toast.success('Cost Centre updated');
+      setCostCentreModal(false);
+      setEditingCostCentreId(null);
+      setCostCentreForm({ name: '', parentId: '' });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Error updating cost centre')
+  });
+
+  const deleteCostCentreMut = useMutation({
+    mutationFn: tallyApi.costCentres.delete,
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['cost-centres'] }); toast.success('Cost Centre deleted'); },
+    onError: (err) => toast.error(err.response?.data?.message || 'Error deleting cost centre')
+  });
+
   // ── Handlers ──────────────────────────────────────────────────
+  const openPartyModal = (party) => {
+    if (party) {
+      setEditingPartyId(party.id);
+      setPartyForm({
+        name: party.name, type: party.type, gstin: party.gstin || '', dlNumber: party.dlNumber || '',
+        phone: party.phone || '', email: party.email || '', address: party.address || '', state: party.state || '',
+        creditLimit: String(party.creditLimit || '0'), creditDays: party.creditPeriodDays || 0
+      });
+    } else {
+      setEditingPartyId(null);
+      setPartyForm({ name: '', type: 'CUSTOMER', gstin: '', dlNumber: '', phone: '', email: '', address: '', state: '', creditLimit: '0', creditDays: 0 });
+    }
+    setPartyModal(true);
+  };
+
+  const openItemModal = (item) => {
+    if (item) {
+      setEditingProductId(item.id);
+      setItemForm({
+        name: item.name, price: String(item.price), unit: item.unit || 'PCS',
+        hsnCode: item.hsnCode || '', gstRate: String(item.gstRate || '0'), reorderLevel: String(item.reorderLevel || '0')
+      });
+    } else {
+      setEditingProductId(null);
+      setItemForm({ name: '', price: '', unit: 'PCS', hsnCode: '', gstRate: '0', reorderLevel: '0' });
+    }
+    setItemModal(true);
+  };
+
+  const openBatchModal = (batch) => {
+    if (batch) {
+      setEditingBatchId(batch.id);
+      setBatchForm({
+        batchNumber: batch.batchNumber,
+        expiryDate: new Date(batch.expiryDate).toISOString().split('T')[0],
+        mrp: String(batch.mrp), currentQty: String(batch.currentQty)
+      });
+    } else {
+      setEditingBatchId(null);
+      setBatchForm({ batchNumber: '', expiryDate: '', mrp: '', currentQty: '0' });
+    }
+    setBatchModal(true);
+  };
+
+  const openCostCentreModal = (cc) => {
+    if (cc) {
+      setEditingCostCentreId(cc.id);
+      setCostCentreForm({ name: cc.name, parentId: cc.parentId || '' });
+    } else {
+      setEditingCostCentreId(null);
+      setCostCentreForm({ name: '', parentId: '' });
+    }
+    setCostCentreModal(true);
+  };
+
   const handlePartySubmit = (e) => {
     e.preventDefault();
-    createPartyMut.mutate({
+    const payload = {
       ...partyForm,
-      creditLimit: Number(partyForm.creditLimit) // Party.creditLimit is a plain rupee decimal, not paise
-    });
+      creditLimit: Number(partyForm.creditLimit), // Party.creditLimit is a plain rupee decimal, not paise
+      creditPeriodDays: Number(partyForm.creditDays) || 0
+    };
+    if (editingPartyId) {
+      updatePartyMut.mutate({ id: editingPartyId, data: payload });
+    } else {
+      createPartyMut.mutate(payload);
+    }
   };
 
   const handleItemSubmit = (e) => {
     e.preventDefault();
-    createItemMut.mutate({
+    const payload = {
       ...itemForm,
       price: Number(itemForm.price),
       gstRate: Number(itemForm.gstRate),
       reorderLevel: Number(itemForm.reorderLevel)
-    });
+    };
+    if (editingProductId) {
+      updateItemMut.mutate({ id: editingProductId, data: payload });
+    } else {
+      createItemMut.mutate(payload);
+    }
   };
 
   const handleBatchSubmit = (e) => {
     e.preventDefault();
-    createBatchMut.mutate({
+    const payload = {
       productId: selectedItem.id,
       batchNumber: batchForm.batchNumber,
       expiryDate: batchForm.expiryDate,
       mrp: Number(batchForm.mrp),
       currentQty: Number(batchForm.currentQty)
-    });
+    };
+    if (editingBatchId) {
+      updateBatchMut.mutate({ id: editingBatchId, data: payload });
+    } else {
+      createBatchMut.mutate(payload);
+    }
+  };
+
+  const handleCostCentreSubmit = (e) => {
+    e.preventDefault();
+    if (!costCentreForm.name) return toast.error('Cost centre name required');
+    if (editingCostCentreId) {
+      updateCostCentreMut.mutate({ id: editingCostCentreId, data: costCentreForm });
+    } else {
+      createCostCentreMut.mutate(costCentreForm);
+    }
   };
 
   const openItemDetails = async (item) => {
@@ -119,7 +291,8 @@ export default function MastersPage() {
 
   const subTabs = [
     { id: 'parties', name: 'Parties Contacts', icon: Users },
-    { id: 'items', name: 'Stock Items', icon: Package }
+    { id: 'items', name: 'Stock Items', icon: Package },
+    { id: 'costCentres', name: 'Cost Centres', icon: Layers }
   ];
 
   return (
@@ -131,13 +304,18 @@ export default function MastersPage() {
         </div>
         <div>
           {activeTab === 'parties' && (
-            <button onClick={() => setPartyModal(true)} className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-sm transition cursor-pointer">
+            <button onClick={() => openPartyModal(null)} className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-sm transition cursor-pointer">
               <Plus className="h-4 w-4" /> Add Party
             </button>
           )}
           {activeTab === 'items' && (
-            <button onClick={() => setItemModal(true)} className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-sm transition cursor-pointer">
+            <button onClick={() => openItemModal(null)} className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-sm transition cursor-pointer">
               <Plus className="h-4 w-4" /> Add Stock Item
+            </button>
+          )}
+          {activeTab === 'costCentres' && (
+            <button onClick={() => openCostCentreModal(null)} className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-sm transition cursor-pointer">
+              <Plus className="h-4 w-4" /> Add Cost Centre
             </button>
           )}
         </div>
@@ -194,8 +372,9 @@ export default function MastersPage() {
                       </div>
                       <div className="text-gray-400 font-mono">{p.gstin || '-'}</div>
                       <div className="text-gray-400">{p.phone || '-'}</div>
-                      <div className="text-right text-gray-400">
-                        <button onClick={() => deletePartyMut.mutate(p.id)} className="hover:text-red-400 transition"><Trash2 className="h-4 w-4 ml-auto" /></button>
+                      <div className="flex items-center justify-end gap-3 text-gray-400">
+                        <button onClick={() => openPartyModal(p)} className="hover:text-amber-500 transition"><Edit2 className="h-4 w-4" /></button>
+                        <button onClick={() => deletePartyMut.mutate(p.id)} className="hover:text-red-400 transition"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </div>
                   ))}
@@ -231,8 +410,44 @@ export default function MastersPage() {
                       <div className="text-gray-400 uppercase">{item.unit || 'PCS'}</div>
                       <div className="text-right font-mono">{item.batches?.reduce((sum, b) => sum + b.currentQty, 0) || 0}</div>
                       <div className="text-right font-mono">₹{formatCurrency(item.price)}</div>
-                      <div className="text-right text-gray-400">
-                        <button onClick={() => deleteItemMut.mutate(item.id)} className="hover:text-red-400 transition"><Trash2 className="h-4 w-4 ml-auto" /></button>
+                      <div className="flex items-center justify-end gap-3 text-gray-400">
+                        <button onClick={() => openItemModal(item)} className="hover:text-amber-500 transition"><Edit2 className="h-4 w-4" /></button>
+                        <button onClick={() => deleteItemMut.mutate(item.id)} className="hover:text-red-400 transition"><Trash2 className="h-4 w-4" /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'costCentres' && (
+          <div>
+            {costCentresLoading ? (
+              <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>
+            ) : costCentres.length === 0 ? (
+              <div className="text-center py-12 text-gray-500 text-sm">
+                <Layers className="h-8 w-8 mx-auto mb-3 text-gray-700" />
+                No cost centres yet. Add one to start tagging voucher lines by department/branch.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 text-xs font-bold text-gray-400 uppercase border-b border-gray-800 pb-3">
+                  <div>Cost Centre Name</div>
+                  <div>Parent Cost Centre</div>
+                  <div className="text-right">Action</div>
+                </div>
+                <div className="divide-y divide-gray-800/40">
+                  {costCentres.map(cc => (
+                    <div key={cc.id} className="grid grid-cols-3 py-3 items-center text-sm">
+                      <div className="font-semibold text-white flex items-center gap-2">
+                        <Layers className="h-4 w-4 text-amber-500" /> {cc.name}
+                      </div>
+                      <div className="text-gray-400">{costCentres.find(p => p.id === cc.parentId)?.name || '-'}</div>
+                      <div className="flex items-center justify-end gap-3 text-gray-400">
+                        <button onClick={() => openCostCentreModal(cc)} className="hover:text-amber-500 transition"><Edit2 className="h-4 w-4" /></button>
+                        <button onClick={() => deleteCostCentreMut.mutate(cc.id)} className="hover:text-red-400 transition"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </div>
                   ))}
@@ -248,7 +463,7 @@ export default function MastersPage() {
       {partyModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="glass max-w-lg w-full p-6 rounded-xl border border-gray-800">
-            <h3 className="text-base font-bold text-white mb-4">Add Stakeholder / Party</h3>
+            <h3 className="text-base font-bold text-white mb-4">{editingPartyId ? 'Edit Stakeholder / Party' : 'Add Stakeholder / Party'}</h3>
             <form onSubmit={handlePartySubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -305,8 +520,8 @@ export default function MastersPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-3 pt-3">
-                <button type="button" onClick={() => setPartyModal(false)} className="px-4 py-2 border border-gray-800 text-gray-400 hover:text-white rounded-lg text-xs">Cancel</button>
-                <button type="submit" disabled={createPartyMut.isPending} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-xs">Save Party</button>
+                <button type="button" onClick={() => { setPartyModal(false); setEditingPartyId(null); }} className="px-4 py-2 border border-gray-800 text-gray-400 hover:text-white rounded-lg text-xs">Cancel</button>
+                <button type="submit" disabled={createPartyMut.isPending || updatePartyMut.isPending} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-xs">{editingPartyId ? 'Update Party' : 'Save Party'}</button>
               </div>
             </form>
           </div>
@@ -317,7 +532,7 @@ export default function MastersPage() {
       {itemModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="glass max-w-lg w-full p-6 rounded-xl border border-gray-800">
-            <h3 className="text-base font-bold text-white mb-4">Add Inventory Item</h3>
+            <h3 className="text-base font-bold text-white mb-4">{editingProductId ? 'Edit Inventory Item' : 'Add Inventory Item'}</h3>
             <form onSubmit={handleItemSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Item Name</label>
@@ -347,10 +562,12 @@ export default function MastersPage() {
                 <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Reorder Level</label>
                 <input type="number" min="0" value={itemForm.reorderLevel} onChange={e => setItemForm({ ...itemForm, reorderLevel: e.target.value })} className="w-full md:w-1/2 bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white outline-none text-sm font-mono" />
               </div>
-              <p className="text-[10px] text-gray-500">After saving, open the item and use "Add Batch" to record incoming stock with batch number, expiry, and MRP.</p>
+              {!editingProductId && (
+                <p className="text-[10px] text-gray-500">After saving, open the item and use "Add Batch" to record incoming stock with batch number, expiry, and MRP.</p>
+              )}
               <div className="flex justify-end gap-3 pt-3">
-                <button type="button" onClick={() => setItemModal(false)} className="px-4 py-2 border border-gray-800 text-gray-400 hover:text-white rounded-lg text-xs">Cancel</button>
-                <button type="submit" disabled={createItemMut.isPending} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-xs">Save Item</button>
+                <button type="button" onClick={() => { setItemModal(false); setEditingProductId(null); }} className="px-4 py-2 border border-gray-800 text-gray-400 hover:text-white rounded-lg text-xs">Cancel</button>
+                <button type="submit" disabled={createItemMut.isPending || updateItemMut.isPending} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-xs">{editingProductId ? 'Update Item' : 'Save Item'}</button>
               </div>
             </form>
           </div>
@@ -361,8 +578,8 @@ export default function MastersPage() {
       {batchModal && selectedItem && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="glass max-w-sm w-full p-6 rounded-xl border border-gray-800">
-            <h3 className="text-base font-bold text-white mb-1">Add Batch — {selectedItem.name}</h3>
-            <p className="text-xs text-gray-500 mb-4">Records incoming stock for this medicine.</p>
+            <h3 className="text-base font-bold text-white mb-1">{editingBatchId ? 'Edit Batch' : 'Add Batch'} — {selectedItem.name}</h3>
+            <p className="text-xs text-gray-500 mb-4">{editingBatchId ? 'Update batch details.' : 'Records incoming stock for this medicine.'}</p>
             <form onSubmit={handleBatchSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Batch Number</label>
@@ -383,8 +600,8 @@ export default function MastersPage() {
                 <input type="number" min="0" required value={batchForm.currentQty} onChange={e => setBatchForm({ ...batchForm, currentQty: e.target.value })} className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white outline-none text-sm font-mono" />
               </div>
               <div className="flex justify-end gap-3 pt-3">
-                <button type="button" onClick={() => setBatchModal(false)} className="px-4 py-2 border border-gray-800 text-gray-400 hover:text-white rounded-lg text-xs">Cancel</button>
-                <button type="submit" disabled={createBatchMut.isPending} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-xs">Save Batch</button>
+                <button type="button" onClick={() => { setBatchModal(false); setEditingBatchId(null); }} className="px-4 py-2 border border-gray-800 text-gray-400 hover:text-white rounded-lg text-xs">Cancel</button>
+                <button type="submit" disabled={createBatchMut.isPending || updateBatchMut.isPending} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-xs">{editingBatchId ? 'Update Batch' : 'Save Batch'}</button>
               </div>
             </form>
           </div>
@@ -541,7 +758,7 @@ export default function MastersPage() {
                   <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Active Batches Stock</span>
                   <button
                     type="button"
-                    onClick={() => setBatchModal(true)}
+                    onClick={() => openBatchModal(null)}
                     className="flex items-center gap-1 text-[9px] font-bold text-amber-500 bg-amber-500/5 border border-amber-500/10 px-2 py-0.5 rounded hover:bg-amber-500 hover:text-[#0a0e1a] cursor-pointer"
                   >
                     <Plus className="h-3 w-3" /> Add Batch
@@ -549,16 +766,21 @@ export default function MastersPage() {
                 </div>
                 {selectedItem.batches && selectedItem.batches.length > 0 ? (
                   <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
-                    <div className="grid grid-cols-3 text-[10px] font-bold text-gray-500 uppercase border-b border-gray-800/40 pb-1">
+                    <div className="grid grid-cols-4 text-[10px] font-bold text-gray-500 uppercase border-b border-gray-800/40 pb-1">
                       <div>Batch No.</div>
                       <div>Expiry</div>
                       <div className="text-right">Qty</div>
+                      <div className="text-right">Action</div>
                     </div>
                     {selectedItem.batches.map(b => (
-                      <div key={b.id} className="grid grid-cols-3 text-xs py-1 text-gray-300 font-mono">
+                      <div key={b.id} className="grid grid-cols-4 text-xs py-1 text-gray-300 font-mono items-center">
                         <div className="font-semibold text-white">{b.batchNumber}</div>
                         <div>{new Date(b.expiryDate).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })}</div>
                         <div className="text-right font-bold text-emerald-400">{b.currentQty}</div>
+                        <div className="flex items-center justify-end gap-2 text-gray-400">
+                          <button type="button" onClick={() => openBatchModal(b)} className="hover:text-amber-500 transition"><Edit2 className="h-3 w-3" /></button>
+                          <button type="button" onClick={() => deleteBatchMut.mutate(b.id)} className="hover:text-red-400 transition"><Trash2 className="h-3 w-3" /></button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -569,13 +791,41 @@ export default function MastersPage() {
             </div>
 
             <div className="flex justify-end pt-4 mt-4 border-t border-gray-800">
-              <button 
+              <button
                 onClick={() => setSelectedItem(null)}
                 className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-bold rounded-lg text-xs cursor-pointer"
               >
                 Close View
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Cost Centre Modal ── */}
+      {costCentreModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="glass max-w-sm w-full p-6 rounded-xl border border-gray-800">
+            <h3 className="text-base font-bold text-white mb-4">{editingCostCentreId ? 'Edit Cost Centre' : 'Add Cost Centre'}</h3>
+            <form onSubmit={handleCostCentreSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Cost Centre Name</label>
+                <input type="text" required value={costCentreForm.name} onChange={e => setCostCentreForm({ ...costCentreForm, name: e.target.value })} placeholder="E.g., Bariatu Branch" className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white placeholder-gray-600 outline-none text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Parent Cost Centre (Optional)</label>
+                <select value={costCentreForm.parentId} onChange={e => setCostCentreForm({ ...costCentreForm, parentId: e.target.value })} className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white outline-none text-sm">
+                  <option value="">None (Top Level)</option>
+                  {costCentres.filter(cc => cc.id !== editingCostCentreId).map(cc => (
+                    <option key={cc.id} value={cc.id}>{cc.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex justify-end gap-3 pt-3">
+                <button type="button" onClick={() => { setCostCentreModal(false); setEditingCostCentreId(null); }} className="px-4 py-2 border border-gray-800 text-gray-400 hover:text-white rounded-lg text-xs">Cancel</button>
+                <button type="submit" disabled={createCostCentreMut.isPending || updateCostCentreMut.isPending} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-xs">{editingCostCentreId ? 'Update' : 'Save'} Cost Centre</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
