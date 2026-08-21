@@ -4,6 +4,7 @@ import { tallyApi } from '../../api/tally.api';
 import { PiggyBank, Plus, Edit2, CheckCircle, Search, Calendar, FileSpreadsheet, Loader2, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDate, formatRupees } from '../../utils/format';
+import QuickAddLedgerModal from '../../components/quickadd/QuickAddLedgerModal';
 
 export default function BankingPage() {
   const queryClient = useQueryClient();
@@ -14,6 +15,7 @@ export default function BankingPage() {
   const [accountModal, setAccountModal] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState(null);
   const [accountForm, setAccountForm] = useState({ name: '', ledgerId: '', bankName: '', accountNumber: '', ifsc: '', branch: '', openingBalance: '0' });
+  const [quickAddLedgerOpen, setQuickAddLedgerOpen] = useState(false);
 
   // Date filters for Bank Statement lookup
   const [startDate, setStartDate] = useState('');
@@ -347,7 +349,14 @@ export default function BankingPage() {
                   <input type="text" required value={accountForm.bankName} onChange={e => setAccountForm({ ...accountForm, bankName: e.target.value })} placeholder="E.g., State Bank of India" className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white placeholder-gray-600 outline-none text-sm" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">General Ledger Map</label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider">General Ledger Map</label>
+                    {!editingAccountId && (
+                      <button type="button" onClick={() => setQuickAddLedgerOpen(true)} className="flex items-center gap-0.5 text-[10px] font-bold text-amber-500 hover:underline cursor-pointer">
+                        <Plus className="h-3 w-3" /> New Ledger
+                      </button>
+                    )}
+                  </div>
                   <select required disabled={!!editingAccountId} value={accountForm.ledgerId} onChange={e => setAccountForm({ ...accountForm, ledgerId: e.target.value })} className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white outline-none text-sm disabled:opacity-40">
                     <option value="">Select Bank Ledger...</option>
                     {bankLedgers.map(l => (
@@ -387,6 +396,14 @@ export default function BankingPage() {
           </div>
         </div>
       )}
+
+      <QuickAddLedgerModal
+        open={quickAddLedgerOpen}
+        onClose={() => setQuickAddLedgerOpen(false)}
+        defaultGroupName="Bank Accounts"
+        stacked
+        onCreated={(ledger) => setAccountForm(f => ({ ...f, ledgerId: ledger.id }))}
+      />
     </div>
   );
 }

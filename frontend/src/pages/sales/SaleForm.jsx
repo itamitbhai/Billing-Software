@@ -5,6 +5,9 @@ import { tallyApi } from '../../api/tally.api';
 import { Plus, Trash2, Save, Undo2, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency } from '../../utils/format';
+import QuickAddPartyModal from '../../components/quickadd/QuickAddPartyModal';
+import QuickAddProductModal from '../../components/quickadd/QuickAddProductModal';
+import QuickAddBatchModal from '../../components/quickadd/QuickAddBatchModal';
 
 const SUPPLY_TYPES = [
   { value: 'TAXABLE', label: 'Taxable' },
@@ -26,6 +29,11 @@ export default function SaleForm() {
   const [supplyType, setSupplyType] = useState('TAXABLE');
   const [placeOfSupply, setPlaceOfSupply] = useState('');
   const [rows, setRows] = useState([emptyRow()]);
+
+  // Quick-add: create a missing Customer/Product/Batch inline instead of leaving this page.
+  const [quickAddCustomerOpen, setQuickAddCustomerOpen] = useState(false);
+  const [quickAddProductRowIdx, setQuickAddProductRowIdx] = useState(null);
+  const [quickAddBatchRowIdx, setQuickAddBatchRowIdx] = useState(null);
 
   // ── Queries ───────────────────────────────────────────────────
   const { data: partiesRes } = useQuery({ queryKey: ['parties'], queryFn: () => tallyApi.parties.list() });
@@ -138,7 +146,16 @@ export default function SaleForm() {
         {/* Header fields */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-[#111827]/40 p-4 rounded-xl border border-gray-800">
           <div className="md:col-span-2">
-            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Customer (Buyer)</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">Customer (Buyer)</label>
+              <button
+                type="button"
+                onClick={() => setQuickAddCustomerOpen(true)}
+                className="flex items-center gap-0.5 text-[10px] font-bold text-amber-500 hover:underline cursor-pointer"
+              >
+                <Plus className="h-3 w-3" /> New Customer
+              </button>
+            </div>
             <select
               required
               value={customerId}
@@ -224,33 +241,54 @@ export default function SaleForm() {
                   return (
                     <tr key={idx}>
                       <td className="p-2 min-w-[180px]">
-                        <select
-                          required
-                          value={row.productId}
-                          onChange={(e) => updateRow(idx, 'productId', e.target.value)}
-                          className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-1.5 text-white outline-none text-xs"
-                        >
-                          <option value="">Select medicine...</option>
-                          {products.map(p => (
-                            <option key={p.id} value={p.id}>{p.name} {p.hsnCode ? `[HSN ${p.hsnCode}]` : ''}</option>
-                          ))}
-                        </select>
+                        <div className="flex items-center gap-1">
+                          <select
+                            required
+                            value={row.productId}
+                            onChange={(e) => updateRow(idx, 'productId', e.target.value)}
+                            className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-1.5 text-white outline-none text-xs"
+                          >
+                            <option value="">Select medicine...</option>
+                            {products.map(p => (
+                              <option key={p.id} value={p.id}>{p.name} {p.hsnCode ? `[HSN ${p.hsnCode}]` : ''}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            title="Add new stock item"
+                            onClick={() => setQuickAddProductRowIdx(idx)}
+                            className="shrink-0 p-1.5 border border-gray-800 rounded-lg text-amber-500 hover:bg-amber-500 hover:text-[#0a0e1a] cursor-pointer"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </td>
                       <td className="p-2 min-w-[220px]">
-                        <select
-                          required
-                          disabled={!row.productId}
-                          value={row.batchId}
-                          onChange={(e) => updateRow(idx, 'batchId', e.target.value)}
-                          className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-1.5 text-white outline-none text-xs disabled:opacity-40"
-                        >
-                          <option value="">Select batch...</option>
-                          {availableBatches.map(b => (
-                            <option key={b.id} value={b.id}>
-                              {b.batchNumber} · Exp {new Date(b.expiryDate).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })} · MRP ₹{formatCurrency(b.mrp)} · Qty {b.currentQty}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="flex items-center gap-1">
+                          <select
+                            required
+                            disabled={!row.productId}
+                            value={row.batchId}
+                            onChange={(e) => updateRow(idx, 'batchId', e.target.value)}
+                            className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-1.5 text-white outline-none text-xs disabled:opacity-40"
+                          >
+                            <option value="">Select batch...</option>
+                            {availableBatches.map(b => (
+                              <option key={b.id} value={b.id}>
+                                {b.batchNumber} · Exp {new Date(b.expiryDate).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })} · MRP ₹{formatCurrency(b.mrp)} · Qty {b.currentQty}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            title="Add new batch"
+                            disabled={!row.productId}
+                            onClick={() => setQuickAddBatchRowIdx(idx)}
+                            className="shrink-0 p-1.5 border border-gray-800 rounded-lg text-amber-500 hover:bg-amber-500 hover:text-[#0a0e1a] cursor-pointer disabled:opacity-30 disabled:pointer-events-none"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </td>
                       <td className="p-2">
                         <input
@@ -285,7 +323,7 @@ export default function SaleForm() {
 
           {products.length === 0 && (
             <div className="flex items-center gap-2 text-xs text-gray-500 p-4 border-t border-gray-800/60">
-              <Package className="h-4 w-4" /> No stock items found — add medicines under Masters Management first.
+              <Package className="h-4 w-4" /> No stock items found — use the <Plus className="h-3 w-3 inline text-amber-500" /> button in the Product column to add one.
             </div>
           )}
 
@@ -316,6 +354,32 @@ export default function SaleForm() {
           </button>
         </div>
       </form>
+
+      <QuickAddPartyModal
+        open={quickAddCustomerOpen}
+        onClose={() => setQuickAddCustomerOpen(false)}
+        defaultType="CUSTOMER"
+        onCreated={(party) => setCustomerId(party.id)}
+      />
+      <QuickAddProductModal
+        open={quickAddProductRowIdx !== null}
+        onClose={() => setQuickAddProductRowIdx(null)}
+        onCreated={(product) => {
+          updateRow(quickAddProductRowIdx, 'productId', product.id);
+          setQuickAddBatchRowIdx(quickAddProductRowIdx);
+          setQuickAddProductRowIdx(null);
+        }}
+      />
+      <QuickAddBatchModal
+        open={quickAddBatchRowIdx !== null}
+        onClose={() => setQuickAddBatchRowIdx(null)}
+        productId={quickAddBatchRowIdx !== null ? rows[quickAddBatchRowIdx]?.productId : null}
+        productName={quickAddBatchRowIdx !== null ? products.find(p => p.id === rows[quickAddBatchRowIdx]?.productId)?.name : ''}
+        onCreated={(batch) => {
+          updateRow(quickAddBatchRowIdx, 'batchId', batch.id);
+          setQuickAddBatchRowIdx(null);
+        }}
+      />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { tallyApi } from '../../api/tally.api';
 import { Plus, ChevronLeft, ChevronRight, Loader2, Wallet } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../utils/format';
 import { toast } from 'sonner';
+import QuickAddPartyModal from '../../components/quickadd/QuickAddPartyModal';
 
 const PAYMENT_METHODS = ['CASH', 'UPI', 'BANK_TRANSFER', 'CHEQUE', 'RAZORPAY'];
 
@@ -17,6 +18,7 @@ export default function PaymentsPage() {
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm());
+  const [quickAddPartyOpen, setQuickAddPartyOpen] = useState(false);
 
   // ── Queries ───────────────────────────────────────────────────
   const { data: paymentsRes, isLoading } = useQuery({
@@ -175,7 +177,12 @@ export default function PaymentsPage() {
             </p>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Party</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider">Party</label>
+                  <button type="button" onClick={() => setQuickAddPartyOpen(true)} className="flex items-center gap-0.5 text-[10px] font-bold text-amber-500 hover:underline cursor-pointer">
+                    <Plus className="h-3 w-3" /> New Party
+                  </button>
+                </div>
                 <select required value={form.partyId} onChange={e => handlePartyChange(e.target.value)} className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white outline-none text-sm">
                   <option value="">Select party...</option>
                   {parties.map(p => (
@@ -232,6 +239,14 @@ export default function PaymentsPage() {
           </div>
         </div>
       )}
+
+      <QuickAddPartyModal
+        open={quickAddPartyOpen}
+        onClose={() => setQuickAddPartyOpen(false)}
+        defaultType="BOTH"
+        stacked
+        onCreated={(party) => handlePartyChange(party.id)}
+      />
     </div>
   );
 }

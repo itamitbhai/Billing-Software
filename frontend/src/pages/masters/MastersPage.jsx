@@ -69,11 +69,20 @@ export default function MastersPage() {
 
   const createItemMut = useMutation({
     mutationFn: tallyApi.stockItems.create,
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['stock-items'] });
-      toast.success('Stock Item registered');
+      toast.success('Stock Item registered — now add its first batch');
       setItemModal(false);
       setItemForm({ name: '', price: '', unit: 'PCS', hsnCode: '', gstRate: '0', reorderLevel: '0' });
+      // Chain straight into Add Batch for the item just created, so the user
+      // isn't forced to exit and re-open it from the list.
+      const created = res?.data;
+      if (created) {
+        setSelectedItem(created);
+        setEditingBatchId(null);
+        setBatchForm({ batchNumber: '', expiryDate: '', mrp: '', currentQty: '0' });
+        setBatchModal(true);
+      }
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Error creating item')
   });
@@ -563,7 +572,7 @@ export default function MastersPage() {
                 <input type="number" min="0" value={itemForm.reorderLevel} onChange={e => setItemForm({ ...itemForm, reorderLevel: e.target.value })} className="w-full md:w-1/2 bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white outline-none text-sm font-mono" />
               </div>
               {!editingProductId && (
-                <p className="text-[10px] text-gray-500">After saving, open the item and use "Add Batch" to record incoming stock with batch number, expiry, and MRP.</p>
+                <p className="text-[10px] text-gray-500">After saving, you'll be prompted to add a batch (batch number, expiry & MRP) for this item right away.</p>
               )}
               <div className="flex justify-end gap-3 pt-3">
                 <button type="button" onClick={() => { setItemModal(false); setEditingProductId(null); }} className="px-4 py-2 border border-gray-800 text-gray-400 hover:text-white rounded-lg text-xs">Cancel</button>
@@ -600,7 +609,7 @@ export default function MastersPage() {
                 <input type="number" min="0" required value={batchForm.currentQty} onChange={e => setBatchForm({ ...batchForm, currentQty: e.target.value })} className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white outline-none text-sm font-mono" />
               </div>
               <div className="flex justify-end gap-3 pt-3">
-                <button type="button" onClick={() => { setBatchModal(false); setEditingBatchId(null); }} className="px-4 py-2 border border-gray-800 text-gray-400 hover:text-white rounded-lg text-xs">Cancel</button>
+                <button type="button" onClick={() => { setBatchModal(false); setEditingBatchId(null); }} className="px-4 py-2 border border-gray-800 text-gray-400 hover:text-white rounded-lg text-xs">{editingBatchId ? 'Cancel' : 'Skip for now'}</button>
                 <button type="submit" disabled={createBatchMut.isPending || updateBatchMut.isPending} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold rounded-lg text-xs">{editingBatchId ? 'Update Batch' : 'Save Batch'}</button>
               </div>
             </form>

@@ -5,6 +5,9 @@ import { tallyApi } from '../../api/tally.api';
 import { Plus, Trash2, Save, Undo2, Calculator, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatRupees } from '../../utils/format';
+import QuickAddPartyModal from '../../components/quickadd/QuickAddPartyModal';
+import QuickAddLedgerModal from '../../components/quickadd/QuickAddLedgerModal';
+import QuickAddCostCentreModal from '../../components/quickadd/QuickAddCostCentreModal';
 
 const MANUAL_TYPES = ['JOURNAL', 'CONTRA', 'CREDIT_NOTE', 'DEBIT_NOTE'];
 
@@ -24,6 +27,11 @@ export default function VoucherForm() {
     { ledgerId: '', type: 'DEBIT', amount: '', description: '', costCentreId: '' },
     { ledgerId: '', type: 'CREDIT', amount: '', description: '', costCentreId: '' }
   ]);
+
+  // Quick-add: create a missing Party/Ledger/Cost Centre inline instead of leaving this page.
+  const [quickAddPartyOpen, setQuickAddPartyOpen] = useState(false);
+  const [quickAddLedgerLineIdx, setQuickAddLedgerLineIdx] = useState(null);
+  const [quickAddCostCentreLineIdx, setQuickAddCostCentreLineIdx] = useState(null);
 
   // ── Queries ───────────────────────────────────────────────────
   const { data: ledgersRes } = useQuery({ queryKey: ['ledgers'], queryFn: () => tallyApi.ledgers.list() });
@@ -186,7 +194,14 @@ export default function VoucherForm() {
             />
           </div>
           <div className="md:col-span-2">
-            <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Ledger Party (Optional)</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ledger Party (Optional)</label>
+              {!isEditMode && (
+                <button type="button" onClick={() => setQuickAddPartyOpen(true)} className="flex items-center gap-0.5 text-[10px] font-bold text-amber-500 hover:underline cursor-pointer">
+                  <Plus className="h-3 w-3" /> New Party
+                </button>
+              )}
+            </div>
             <select
               value={partyId}
               disabled={isEditMode}
@@ -231,7 +246,7 @@ export default function VoucherForm() {
                       <option value="CREDIT">Cr (Credit)</option>
                     </select>
                   </div>
-                  <div className="flex-1 min-w-[200px]">
+                  <div className="flex-1 min-w-[200px] flex items-center gap-1">
                     <select
                       value={line.ledgerId}
                       required
@@ -243,6 +258,14 @@ export default function VoucherForm() {
                         <option key={l.id} value={l.id}>{l.name} ({l.group?.name})</option>
                       ))}
                     </select>
+                    <button
+                      type="button"
+                      title="Add new ledger"
+                      onClick={() => setQuickAddLedgerLineIdx(lineIdx)}
+                      className="shrink-0 p-2 border border-gray-800 rounded-lg text-amber-500 hover:bg-amber-500 hover:text-[#0a0e1a] cursor-pointer"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                   <div className="w-full md:w-44">
                     <input
@@ -255,7 +278,7 @@ export default function VoucherForm() {
                       className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2 text-xs text-white font-mono"
                     />
                   </div>
-                  <div className="flex-1 min-w-[150px]">
+                  <div className="flex-1 min-w-[150px] flex items-center gap-1">
                     <select
                       value={line.costCentreId}
                       onChange={(e) => handleLineChange(lineIdx, 'costCentreId', e.target.value)}
@@ -266,6 +289,14 @@ export default function VoucherForm() {
                         <option key={cc.id} value={cc.id}>{cc.name}</option>
                       ))}
                     </select>
+                    <button
+                      type="button"
+                      title="Add new cost centre"
+                      onClick={() => setQuickAddCostCentreLineIdx(lineIdx)}
+                      className="shrink-0 p-2 border border-gray-800 rounded-lg text-amber-500 hover:bg-amber-500 hover:text-[#0a0e1a] cursor-pointer"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                   <button
                     type="button"
@@ -328,6 +359,29 @@ export default function VoucherForm() {
           </button>
         </div>
       </form>
+
+      <QuickAddPartyModal
+        open={quickAddPartyOpen}
+        onClose={() => setQuickAddPartyOpen(false)}
+        defaultType="BOTH"
+        onCreated={(party) => setPartyId(party.id)}
+      />
+      <QuickAddLedgerModal
+        open={quickAddLedgerLineIdx !== null}
+        onClose={() => setQuickAddLedgerLineIdx(null)}
+        onCreated={(ledger) => {
+          handleLineChange(quickAddLedgerLineIdx, 'ledgerId', ledger.id);
+          setQuickAddLedgerLineIdx(null);
+        }}
+      />
+      <QuickAddCostCentreModal
+        open={quickAddCostCentreLineIdx !== null}
+        onClose={() => setQuickAddCostCentreLineIdx(null)}
+        onCreated={(costCentre) => {
+          handleLineChange(quickAddCostCentreLineIdx, 'costCentreId', costCentre.id);
+          setQuickAddCostCentreLineIdx(null);
+        }}
+      />
     </div>
   );
 }
