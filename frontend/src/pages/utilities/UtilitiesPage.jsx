@@ -1,12 +1,21 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tallyApi } from '../../api/tally.api';
 import { authApi } from '../../api/auth.api';
 import { useAuthStore } from '../../store/auth.store';
-import { Loader2, Plus, Settings, Building, Users, Mail, Shield, ShieldCheck, Lock, UserPlus, ScrollText, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, Plus, Settings, Building, Users, Mail, Shield, ShieldCheck, Lock, UserPlus, ScrollText, ChevronLeft, ChevronRight, FileText, Eye, Printer } from 'lucide-react';
+import { formatDate, formatCurrency } from '../../utils/format';
 import { toast } from 'sonner';
 
+const INVOICE_STATUS_STYLES = {
+  PAID: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  PARTIALLY_PAID: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+  UNPAID: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
+};
+
 export default function UtilitiesPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const currentUser = useAuthStore((state) => state.user);
   const isAdmin = currentUser?.role === 'ADMIN';
@@ -19,6 +28,9 @@ export default function UtilitiesPage() {
 
   // Audit Log pagination
   const [auditPage, setAuditPage] = useState(1);
+
+  // Sale Invoices pagination
+  const [invoicePage, setInvoicePage] = useState(1);
 
   // ── Queries ───────────────────────────────────────────────────
   const { data: companyRes, isLoading: companyLoading } = useQuery({
@@ -38,10 +50,18 @@ export default function UtilitiesPage() {
     enabled: activeTab === 'audit' && isAdmin
   });
 
+  const { data: invoicesRes, isLoading: invoicesLoading, error: invoicesError } = useQuery({
+    queryKey: ['sales', invoicePage],
+    queryFn: () => tallyApi.billing.sales.list({ page: invoicePage, limit: 15 }),
+    enabled: activeTab === 'invoices' && isAdmin
+  });
+
   const company = companyRes?.data || { companyName: '', email: '', phone: '', address: '', gstin: '', state: '' };
   const usersList = usersRes?.data || [];
   const auditLogs = auditRes?.data || [];
   const auditTotalPages = auditRes?.totalPages || 1;
+  const invoicesList = invoicesRes?.data || [];
+  const invoiceTotalPages = invoicesRes?.totalPages || 1;
 
   // Company Profile Update State
   const [companyForm, setCompanyForm] = useState({
@@ -116,6 +136,7 @@ export default function UtilitiesPage() {
         {[
           { id: 'company', name: 'Company Profile', icon: Building, show: true },
           { id: 'users', name: 'User Management', icon: Users, show: isAdmin },
+          { id: 'invoices', name: 'Sale Invoices', icon: FileText, show: isAdmin },
           { id: 'audit', name: 'Audit Log', icon: ScrollText, show: isAdmin }
         ].filter(t => t.show).map(t => {
           const Icon = t.icon;
@@ -267,6 +288,93 @@ export default function UtilitiesPage() {
                   ))}
                 </div>
               </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'invoices' && (
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-bold text-white">Sale Invoices</h4>
+              <p className="text-xs text-gray-500 mt-1">Every GST invoice ever raised in the system, newest first</p>
+            </div>
+
+            {invoicesLoading ? (
+              <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>
+            ) : invoicesError ? (
+              <div className="text-center py-12 text-rose-500 text-sm">Failed to load sale invoices. Please try again.</div>
+            ) : invoicesList.length === 0 ? (
+              <div className="text-center py-12 text-gray-500 text-sm">No sale invoices raised yet.</div>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="text-gray-400 font-bold uppercase border-b border-gray-800">
+                        <th className="pb-3">Invoice No.</th>
+                        <th className="pb-3">Date</th>
+                        <th className="pb-3">Customer</th>
+                        <th className="pb-3 text-right">Total</th>
+                        <th className="pb-3">Status</th>
+                        <th className="pb-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-800/40 text-sm">
+                      {invoicesList.map(inv => (
+                        <tr key={inv.id} className="hover:bg-[#111827]/20">
+                          <td className="py-3 font-semibold text-white font-mono">{inv.invoiceNumber}</td>
+                          <td className="py-3 text-gray-400">{formatDate(inv.saleDate)}</td>
+                          <td className="py-3 text-gray-300 font-medium">{inv.customer?.name || '-'}</td>
+                          <td className="py-3 text-right font-mono font-semibold text-white">₹{formatCurrency(inv.totalAmount)}</td>
+                          <td className="py-3">
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${INVOICE_STATUS_STYLES[inv.status] || INVOICE_STATUS_STYLES.UNPAID}`}>
+                              {inv.status?.replace('_', ' ')}
+                            </span>
+                          </td>
+                          <td className="py-3 text-right">
+                            <div className="flex items-center justify-end gap-3 text-gray-400">
+                              <button
+                                onClick={() => navigate(`/sales/${inv.id}/invoice`)}
+                                title="View Invoice"
+                                className="hover:text-sky-400 transition cursor-pointer"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => window.open(`/sales/${inv.id}/invoice`, '_blank')}
+                                title="Print GST Invoice"
+                                className="hover:text-amber-500 transition cursor-pointer"
+                              >
+                                <Printer className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {invoiceTotalPages > 1 && (
+                  <div className="flex items-center justify-end gap-3 pt-2">
+                    <button
+                      onClick={() => setInvoicePage(p => Math.max(1, p - 1))}
+                      disabled={invoicePage <= 1}
+                      className="p-1.5 rounded border border-gray-800 text-gray-400 hover:text-white disabled:opacity-30 cursor-pointer"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </button>
+                    <span className="text-xs text-gray-400">Page {invoicePage} of {invoiceTotalPages}</span>
+                    <button
+                      onClick={() => setInvoicePage(p => Math.min(invoiceTotalPages, p + 1))}
+                      disabled={invoicePage >= invoiceTotalPages}
+                      className="p-1.5 rounded border border-gray-800 text-gray-400 hover:text-white disabled:opacity-30 cursor-pointer"
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

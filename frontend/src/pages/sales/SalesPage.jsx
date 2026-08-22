@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tallyApi } from '../../api/tally.api';
-import { Plus, ChevronLeft, ChevronRight, Loader2, Printer, FileText, IndianRupee } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Loader2, Printer, FileText, IndianRupee, Eye } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../utils/format';
 import { toast } from 'sonner';
 
@@ -141,6 +141,13 @@ export default function SalesPage() {
                               <IndianRupee className="h-4 w-4" />
                             </button>
                           )}
+                          <button
+                            onClick={() => navigate(`/sales/${s.id}/invoice`)}
+                            title="View Invoice"
+                            className="hover:text-sky-400 transition cursor-pointer"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
                           <button
                             onClick={() => window.open(`/sales/${s.id}/invoice`, '_blank')}
                             title="Print GST Invoice"

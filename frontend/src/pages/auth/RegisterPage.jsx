@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { useAuthStore } from '../../store/auth.store';
 import { authApi } from '../../api/auth.api';
-import { Building, User, Mail, Lock, Loader2 } from 'lucide-react';
+import { Building2, User, Mail, Lock, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
+import Button from '../../components/ui/Button';
+import Input from '../../components/ui/Input';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
   const setAuth = useAuthStore((state) => state.setAuth);
-  
+
   const [formData, setFormData] = useState({
     companyName: '',
     name: '',
@@ -43,131 +46,90 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0a0e1a] px-4 relative overflow-hidden py-12">
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
+    <div className="min-h-screen flex items-center justify-center bg-[#05060b] px-4 relative overflow-hidden bg-grid-dots py-12">
+      <div className="absolute top-[-10%] left-[8%] w-[28rem] h-[28rem] bg-amber-500/10 rounded-full blur-[110px]" />
+      <div className="absolute bottom-[-15%] right-[8%] w-[28rem] h-[28rem] bg-indigo-500/10 rounded-full blur-[110px]" />
 
-      <div className="w-full max-w-md glass p-8 rounded-2xl border border-gray-800 tally-border tally-glow relative z-10">
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
+        className="w-full max-w-md glass bg-noise p-8 rounded-2xl tally-border tally-glow relative z-10"
+      >
         <div className="flex flex-col items-center mb-8">
-          <div className="h-12 w-12 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20 mb-4">
-            <Building className="h-6 w-6 text-amber-500" />
+          <div className="h-13 w-13 rounded-2xl bg-gradient-to-b from-amber-400/20 to-amber-500/5 flex items-center justify-center border border-amber-500/25 mb-5 shadow-[0_0_30px_-8px_rgba(242,181,68,0.5)]">
+            <Building2 className="h-6 w-6 text-amber-400" />
           </div>
-          <h2 className="text-2xl font-bold text-white tracking-wide">Register Enterprise</h2>
-          <p className="text-gray-400 text-sm mt-1">Deploy New Company & Database</p>
+          <h2 className="text-2xl font-bold text-gradient-gold tracking-tight">Register Enterprise</h2>
+          <p className="text-gray-500 text-sm mt-1.5">Deploy New Company &amp; Database</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Company Name</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500">
-                <Building className="h-4.5 w-4.5" />
-              </span>
-              <input
-                type="text"
-                name="companyName"
-                required
-                value={formData.companyName}
-                onChange={handleChange}
-                placeholder="E.g., Apex Solutions Pvt Ltd"
-                className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 rounded-xl py-2.5 pl-11 pr-4 text-white placeholder-gray-600 outline-none transition-all duration-200"
-              />
-            </div>
-          </div>
+          <Input
+            label="Company Name"
+            icon={Building2}
+            name="companyName"
+            required
+            value={formData.companyName}
+            onChange={handleChange}
+            placeholder="E.g., Apex Solutions Pvt Ltd"
+          />
 
-          <div>
-            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">CEO / Owner Name</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500">
-                <User className="h-4.5 w-4.5" />
-              </span>
-              <input
-                type="text"
-                name="name"
-                required
-                value={formData.name}
-                onChange={handleChange}
-                placeholder="Amit Yadav"
-                className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 rounded-xl py-2.5 pl-11 pr-4 text-white placeholder-gray-600 outline-none transition-all duration-200"
-              />
-            </div>
-          </div>
+          <Input
+            label="CEO / Owner Name"
+            icon={User}
+            name="name"
+            required
+            value={formData.name}
+            onChange={handleChange}
+            placeholder="Amit Yadav"
+          />
 
-          <div>
-            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Company State (GST Region)</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500">
-                <Building className="h-4.5 w-4.5" />
-              </span>
-              <input
-                type="text"
-                name="state"
-                required
-                value={formData.state}
-                onChange={handleChange}
-                placeholder="E.g., Jharkhand"
-                className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 rounded-xl py-2.5 pl-11 pr-4 text-white placeholder-gray-600 outline-none transition-all duration-200"
-              />
-            </div>
-            <p className="text-[10px] text-gray-500 mt-1.5">Used to auto-decide CGST+SGST vs IGST on your GST invoices — get this right, you can still edit it later under Utilities.</p>
-          </div>
+          <Input
+            label="Company State (GST Region)"
+            icon={MapPin}
+            name="state"
+            required
+            value={formData.state}
+            onChange={handleChange}
+            placeholder="E.g., Jharkhand"
+            hint="Used to auto-decide CGST+SGST vs IGST on your GST invoices — you can still edit it later under Utilities."
+          />
 
-          <div>
-            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Email Address</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500">
-                <Mail className="h-4.5 w-4.5" />
-              </span>
-              <input
-                type="email"
-                name="email"
-                required
-                value={formData.email}
-                onChange={handleChange}
-                placeholder="ceo@company.com"
-                className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 rounded-xl py-2.5 pl-11 pr-4 text-white placeholder-gray-600 outline-none transition-all duration-200"
-              />
-            </div>
-          </div>
+          <Input
+            label="Email Address"
+            icon={Mail}
+            type="email"
+            name="email"
+            required
+            value={formData.email}
+            onChange={handleChange}
+            placeholder="ceo@company.com"
+          />
 
-          <div>
-            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Password</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500">
-                <Lock className="h-4.5 w-4.5" />
-              </span>
-              <input
-                type="password"
-                name="password"
-                required
-                value={formData.password}
-                onChange={handleChange}
-                placeholder="Min. 8 characters"
-                className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 rounded-xl py-2.5 pl-11 pr-4 text-white placeholder-gray-600 outline-none transition-all duration-200"
-              />
-            </div>
-          </div>
+          <Input
+            label="Password"
+            icon={Lock}
+            type="password"
+            name="password"
+            required
+            value={formData.password}
+            onChange={handleChange}
+            placeholder="Min. 8 characters"
+          />
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold py-3 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-amber-500/10 cursor-pointer disabled:opacity-50 mt-6"
-          >
-            {loading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              'Deploy Company Database'
-            )}
-          </button>
+          <Button type="submit" loading={loading} size="lg" className="w-full mt-2">
+            {loading ? 'Deploying…' : 'Deploy Company Database'}
+          </Button>
         </form>
 
         <p className="text-center text-sm text-gray-500 mt-6">
           Already registered?{' '}
-          <Link to="/login" className="text-amber-500 hover:underline font-medium">
+          <Link to="/login" className="text-amber-400 hover:text-amber-300 hover:underline font-medium transition-colors">
             Sign In
           </Link>
         </p>
-      </div>
+      </motion.div>
     </div>
   );
 }

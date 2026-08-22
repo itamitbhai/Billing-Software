@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { useAuthStore } from '../../store/auth.store';
 import { authApi } from '../../api/auth.api';
-import { Building, Lock, Mail, Loader2 } from 'lucide-react';
+import { Building2, Lock, Mail, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import Button from '../../components/ui/Button';
+import Input from '../../components/ui/Input';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -32,74 +35,57 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0a0e1a] px-4 relative overflow-hidden">
-      {/* Visual background lights */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
+    <div className="min-h-screen flex items-center justify-center bg-[#05060b] px-4 relative overflow-hidden bg-grid-dots">
+      {/* Ambient glow orbs */}
+      <div className="absolute top-[-10%] left-[8%] w-[28rem] h-[28rem] bg-amber-500/10 rounded-full blur-[110px]" />
+      <div className="absolute bottom-[-15%] right-[8%] w-[28rem] h-[28rem] bg-indigo-500/10 rounded-full blur-[110px]" />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#05060b]" />
 
-      <div className="w-full max-w-md glass p-8 rounded-2xl border border-gray-800 tally-border tally-glow relative z-10">
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
+        className="w-full max-w-md glass bg-noise p-8 sm:p-9 rounded-2xl tally-border tally-glow relative z-10"
+      >
         <div className="flex flex-col items-center mb-8">
-          <div className="h-12 w-12 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20 mb-4">
-            <Building className="h-6 w-6 text-amber-500" />
+          <div className="h-13 w-13 rounded-2xl bg-gradient-to-b from-amber-400/20 to-amber-500/5 flex items-center justify-center border border-amber-500/25 mb-5 shadow-[0_0_30px_-8px_rgba(242,181,68,0.5)]">
+            <Building2 className="h-6 w-6 text-amber-400" />
           </div>
-          <h2 className="text-2xl font-bold text-white tracking-wide">Tally Gateway</h2>
-          <p className="text-gray-400 text-sm mt-1">Enterprise ERP Management Portal</p>
+          <h2 className="text-2xl font-bold text-gradient-gold tracking-tight">Tally Gateway</h2>
+          <p className="text-gray-500 text-sm mt-1.5">Enterprise ERP Management Portal</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">Email Address</label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500">
-                <Mail className="h-4.5 w-4.5" />
-              </span>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@company.com"
-                className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 rounded-xl py-3 pl-11 pr-4 text-white placeholder-gray-600 outline-none transition-all duration-200"
-              />
-            </div>
-          </div>
+          <Input
+            label="Email Address"
+            icon={Mail}
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@company.com"
+          />
 
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Password</label>
-            </div>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-500">
-                <Lock className="h-4.5 w-4.5" />
-              </span>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 rounded-xl py-3 pl-11 pr-4 text-white placeholder-gray-600 outline-none transition-all duration-200"
-              />
-            </div>
-          </div>
+          <Input
+            label="Password"
+            icon={Lock}
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+          />
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-amber-500 hover:bg-amber-600 text-[#0a0e1a] font-semibold py-3.5 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-amber-500/10 cursor-pointer disabled:opacity-50"
-          >
-            {loading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              'Access Gateway'
-            )}
-          </button>
+          <Button type="submit" loading={loading} size="lg" className="w-full mt-1">
+            {loading ? 'Verifying…' : 'Access Gateway'}
+          </Button>
         </form>
 
-        <p className="text-center text-xs text-gray-600 mt-6">
+        <div className="flex items-center justify-center gap-1.5 text-[11px] text-gray-600 mt-7">
+          <ShieldCheck className="h-3.5 w-3.5 text-gray-600" />
           Access is admin-provisioned only. Contact your administrator for a login.
-        </p>
-      </div>
+        </div>
+      </motion.div>
     </div>
   );
 }
