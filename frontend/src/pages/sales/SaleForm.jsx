@@ -2,9 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tallyApi } from '../../api/tally.api';
-import { Plus, Trash2, Save, Undo2, Package } from 'lucide-react';
+import { Plus, Trash2, Save, Undo2, Package, History, ArrowUpRight, ArrowDownRight, IndianRupee } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatCurrency } from '../../utils/format';
+import { formatCurrency, formatDate } from '../../utils/format';
 import QuickAddPartyModal from '../../components/quickadd/QuickAddPartyModal';
 import QuickAddProductModal from '../../components/quickadd/QuickAddProductModal';
 import QuickAddBatchModal from '../../components/quickadd/QuickAddBatchModal';
@@ -20,6 +20,8 @@ const SUPPLY_TYPES = [
 
 const emptyRow = () => ({ productId: '', batchId: '', qty: '1', rate: '' });
 
+const PAYMENT_METHODS = ['CASH', 'UPI', 'BANK_TRANSFER', 'CHEQUE', 'RAZORPAY'];
+
 export default function SaleForm() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -29,6 +31,15 @@ export default function SaleForm() {
   const [supplyType, setSupplyType] = useState('TAXABLE');
   const [placeOfSupply, setPlaceOfSupply] = useState('');
   const [rows, setRows] = useState([emptyRow()]);
+
+  // Payment received at the time of billing — UNPAID (credit) / PARTIAL / FULL.
+  // Recorded as a real Payment (with ledger postings) right after the sale is
+  // created, so Sale.status (UNPAID/PARTIALLY_PAID/PAID) reflects it immediately
+  // instead of requiring a separate "Record Payment" step afterwards.
+  const [paymentOption, setPaymentOption] = useState('UNPAID');
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('CASH');
+  const [paymentReference, setPaymentReference] = useState('');
 
   // Quick-add: create a missing Customer/Product/Batch inline instead of leaving this page.
   const [quickAddCustomerOpen, setQuickAddCustomerOpen] = useState(false);
@@ -46,6 +57,20 @@ export default function SaleForm() {
   const company = companyRes?.data;
   const allBatches = batchesRes?.data || [];
 
+  // ── Last Sale Rate (Customer + Product) ─────────────────────────
+  // Batched into a single request per (customer, product-set) instead of one
+  // call per row, so adding items doesn't fan out N API calls.
+  const rowProductIds = useMemo(
+    () => [...new Set(rows.map(r => r.productId).filter(Boolean))].sort(),
+    [rows]
+  );
+  const { data: lastRatesRes, isFetching: lastRatesLoading } = useQuery({
+    queryKey: ['last-sale-rates', customerId, rowProductIds],
+    queryFn: () => tallyApi.billing.sales.lastRateBatch(customerId, rowProductIds),
+    enabled: !!customerId && rowProductIds.length > 0,
+  });
+  const lastRates = lastRatesRes?.data || {};
+
   const selectedCustomer = customers.find(c => c.id === customerId);
   const effectivePlaceOfSupply = placeOfSupply || selectedCustomer?.state || '';
   const isIntraState = !company?.state || !effectivePlaceOfSupply
@@ -53,14 +78,35 @@ export default function SaleForm() {
 
   // ── Mutations ─────────────────────────────────────────────────
   const createSaleMut = useMutation({
-    mutationFn: tallyApi.billing.sales.create,
+    mutationFn: async ({ sale, payment }) => {
+      const saleRes = await tallyApi.billing.sales.create(sale);
+      const createdSale = saleRes?.data;
+      if (payment && createdSale?.id) {
+        try {
+          await tallyApi.billing.payments.create({ ...payment, saleId: createdSale.id });
+        } catch (err) {
+          // The invoice itself was saved successfully — only the payment leg failed.
+          // Surface that distinctly instead of the caller thinking nothing was saved.
+          throw Object.assign(new Error('SALE_CREATED_PAYMENT_FAILED'), { sale: createdSale, cause: err });
+        }
+      }
+      return saleRes;
+    },
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['sales'] });
       toast.success('GST sale invoice created successfully');
       const saleId = res?.data?.id;
       navigate(saleId ? `/sales/${saleId}/invoice` : '/sales');
     },
-    onError: (err) => toast.error(err.response?.data?.message || 'Error creating sale invoice'),
+    onError: (err) => {
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
+      if (err.message === 'SALE_CREATED_PAYMENT_FAILED') {
+        toast.error('Invoice was saved, but recording the payment failed — record it manually from the Sales list.');
+        navigate(`/sales/${err.sale.id}/invoice`);
+        return;
+      }
+      toast.error(err.response?.data?.message || 'Error creating sale invoice');
+    },
   });
 
   // ── Row helpers ───────────────────────────────────────────────
@@ -84,6 +130,8 @@ export default function SaleForm() {
     updated[idx] = row;
     setRows(updated);
   };
+
+  const applyLastRate = (idx, rate) => updateRow(idx, 'rate', String(rate));
 
   // ── Priced preview (mirrors backend priceItems logic) ──────────
   const pricedRows = useMemo(() => rows.map((row) => {
@@ -114,16 +162,29 @@ export default function SaleForm() {
       return toast.error('Every line requires a product, batch, quantity, and rate.');
     }
 
+    let payment = null;
+    if (paymentOption === 'FULL') {
+      payment = { partyId: customerId, amount: totals.totalAmount, method: paymentMethod, paymentDate: saleDate, referenceNumber: paymentReference || undefined };
+    } else if (paymentOption === 'PARTIAL') {
+      const amount = Number(paymentAmount);
+      if (!amount || amount <= 0) return toast.error('Enter how much the customer has paid.');
+      if (amount >= totals.totalAmount) return toast.error('That covers the full amount — choose "Fully Paid" instead.');
+      payment = { partyId: customerId, amount, method: paymentMethod, paymentDate: saleDate, referenceNumber: paymentReference || undefined };
+    }
+
     createSaleMut.mutate({
-      customerId,
-      saleDate,
-      supplyType,
-      placeOfSupply: effectivePlaceOfSupply,
-      items: rows.map(r => ({
-        batchId: r.batchId,
-        qty: Number(r.qty),
-        rate: Number(r.rate),
-      })),
+      sale: {
+        customerId,
+        saleDate,
+        supplyType,
+        placeOfSupply: effectivePlaceOfSupply,
+        items: rows.map(r => ({
+          batchId: r.batchId,
+          qty: Number(r.qty),
+          rate: Number(r.rate),
+        })),
+      },
+      payment,
     });
   };
 
@@ -238,8 +299,13 @@ export default function SaleForm() {
                 {rows.map((row, idx) => {
                   const priced = pricedRows[idx];
                   const availableBatches = batchesForProduct(row.productId);
+                  const lastRate = row.productId ? lastRates[row.productId] : null;
+                  const showLastRateInfo = !!customerId && !!row.productId;
+                  const currentRate = Number(row.rate) || 0;
+                  const diff = lastRate?.found && currentRate ? currentRate - lastRate.rate : 0;
                   return (
-                    <tr key={idx}>
+                    <React.Fragment key={idx}>
+                    <tr>
                       <td className="p-2 min-w-[180px]">
                         <div className="flex items-center gap-1">
                           <select
@@ -315,6 +381,42 @@ export default function SaleForm() {
                         </button>
                       </td>
                     </tr>
+                    {showLastRateInfo && (
+                      <tr className="bg-[#0d1224]/60">
+                        <td colSpan={8} className="px-3 pb-2.5 -mt-1">
+                          {lastRatesLoading && !lastRate ? (
+                            <span className="text-[10px] text-gray-500 italic">Checking previous rate...</span>
+                          ) : lastRate?.found ? (
+                            <div className="flex flex-wrap items-center gap-2 text-[10px]">
+                              <span className="flex items-center gap-1 text-gray-400">
+                                <History className="h-3 w-3 text-amber-500" />
+                                Last Sold: <span className="text-white font-semibold">₹{formatCurrency(lastRate.rate)}</span>
+                              </span>
+                              <span className="text-gray-600">|</span>
+                              <span className="text-gray-400">Last Sale Date: <span className="text-gray-300">{formatDate(lastRate.date)}</span></span>
+                              <span className="text-gray-600">|</span>
+                              <span className="text-gray-400">Last Qty: <span className="text-gray-300">{lastRate.qty}</span></span>
+                              <button
+                                type="button"
+                                onClick={() => applyLastRate(idx, lastRate.rate)}
+                                className="ml-1 flex items-center gap-1 font-bold bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded border border-amber-500/20 hover:bg-amber-500 hover:text-[#0a0e1a] cursor-pointer"
+                              >
+                                Use Last Rate ₹{formatCurrency(lastRate.rate)}
+                              </button>
+                              {diff !== 0 && (
+                                <span className={`flex items-center gap-0.5 font-bold ${diff > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                  {diff > 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                                  {diff > 0 ? '+' : ''}₹{formatCurrency(Math.abs(diff))} vs last
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-gray-500 italic">No previous sale found for this customer.</span>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -341,6 +443,74 @@ export default function SaleForm() {
               <span className="text-gray-400 block">Total Payable</span>
               <span className="text-amber-500 font-bold text-base">₹{formatCurrency(totals.totalAmount)}</span>
             </div>
+          </div>
+        </div>
+
+        {/* Payment Status */}
+        <div className="glass rounded-xl border border-gray-800 overflow-hidden">
+          <div className="px-5 py-3.5 bg-[#111827]/40 border-b border-gray-800 flex items-center gap-2">
+            <IndianRupee className="h-3.5 w-3.5 text-amber-500" />
+            <h3 className="text-xs font-bold uppercase tracking-wider text-amber-500">Payment Status</h3>
+          </div>
+          <div className="p-4 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {[
+                { value: 'UNPAID', label: 'Unpaid (On Credit)', desc: 'No payment received yet' },
+                { value: 'PARTIAL', label: 'Partially Paid', desc: 'Customer paid part of the bill' },
+                { value: 'FULL', label: 'Fully Paid', desc: `Customer paid the full ₹${formatCurrency(totals.totalAmount)}` },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setPaymentOption(opt.value)}
+                  className={`text-left p-3 rounded-lg border cursor-pointer transition ${
+                    paymentOption === opt.value
+                      ? 'bg-amber-500/10 border-amber-500/40 text-white'
+                      : 'bg-[#0d1224] border-gray-800 text-gray-400 hover:border-gray-700'
+                  }`}
+                >
+                  <div className="text-xs font-bold">{opt.label}</div>
+                  <div className="text-[10px] text-gray-500 mt-0.5">{opt.desc}</div>
+                </button>
+              ))}
+            </div>
+
+            {(paymentOption === 'PARTIAL' || paymentOption === 'FULL') && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-gray-800/60">
+                {paymentOption === 'PARTIAL' && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Amount Received (₹)</label>
+                    <input
+                      type="number" step="0.01" min="0.01" required
+                      value={paymentAmount}
+                      onChange={(e) => setPaymentAmount(e.target.value)}
+                      placeholder="e.g. 3000"
+                      className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2 text-white placeholder-gray-600 outline-none text-xs font-mono"
+                    />
+                  </div>
+                )}
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Payment Method</label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2 text-white outline-none text-xs"
+                  >
+                    {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m.replace('_', ' ')}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Reference No. (Optional)</label>
+                  <input
+                    type="text"
+                    value={paymentReference}
+                    onChange={(e) => setPaymentReference(e.target.value)}
+                    placeholder="UPI txn ID / cheque no."
+                    className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2 text-white placeholder-gray-600 outline-none text-xs"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

@@ -70,6 +70,8 @@ model Product {
 
   batches            Batch[]
   stockLedgerEntries StockLedgerEntry[]
+  saleItems          SaleItem[]
+  purchaseItems      PurchaseItem[]
 
   @@unique([companyId, externalId])
   @@index([companyId, name])

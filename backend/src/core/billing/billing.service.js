@@ -184,6 +184,7 @@ export async function createPurchase(companyId, { supplierId, billNumber, purcha
         data: {
           purchaseId: purchase.id,
           batchId: item.batchId,
+          productId: item.batch.productId,
           qty: item.qty,
           rate: item.rate,
           gstAmount: item.gstAmount,
@@ -338,6 +339,7 @@ export async function createSale(companyId, { customerId, saleDate, items, place
         data: {
           saleId: sale.id,
           batchId: item.batchId,
+          productId: item.batch.productId,
           qty: item.qty,
           rate: item.rate,
           gstAmount: item.gstAmount,
@@ -543,4 +545,113 @@ export async function getLastSale(companyId, customerId) {
       items: { include: { batch: { include: { product: true } } } },
     },
   });
+}
+
+// ============================================
+// LAST SALE / PURCHASE RATE (MARG-style rate suggestion)
+//
+// Looks up the most recent *valid* transaction for an exact
+// Customer+Product (sale) or Supplier+Product (purchase) pair, to pre-fill
+// the rate field on a new invoice line. This is a suggestion only — it is
+// never written back to the product/party master, and the user is always
+// free to type a different rate. `isCancelled` invoices are excluded so a
+// cancelled bill never surfaces as the "last" rate.
+// ============================================
+
+function toLastRateResult(row, { dateKey, docNumberKey }) {
+  if (!row) return { found: false };
+  return {
+    found: true,
+    rate: Number(row.rate),
+    qty: Number(row.qty),
+    date: row[dateKey],
+    documentNumber: row[docNumberKey],
+  };
+}
+
+/** Single Customer+Product lookup — used when only one line's rate needs checking. */
+export async function getLastSaleRate(companyId, customerId, productId) {
+  const rows = await prisma.$queryRaw`
+    SELECT si.rate, si.qty, s."saleDate" AS "saleDate", s."invoiceNumber" AS "invoiceNumber"
+    FROM "SaleItem" si
+    JOIN "Sale" s ON s.id = si."saleId"
+    WHERE s."companyId" = ${companyId}
+      AND s."customerId" = ${customerId}
+      AND s."isCancelled" = false
+      AND si."productId" = ${productId}
+    ORDER BY s."saleDate" DESC, s."createdAt" DESC
+    LIMIT 1
+  `;
+  return toLastRateResult(rows[0], { dateKey: 'saleDate', docNumberKey: 'invoiceNumber' });
+}
+
+/**
+ * Batch Customer+Product lookup for every line on an invoice in one round trip.
+ * Uses DISTINCT ON (Postgres) so the DB itself picks the single latest valid row
+ * per product instead of the app fetching full history and reducing it in JS.
+ * Returns a map keyed by productId; a product with no prior sale is simply absent.
+ */
+export async function getLastSaleRatesBatch(companyId, customerId, productIds) {
+  const ids = [...new Set(productIds)].filter(Boolean);
+  if (!ids.length) return {};
+
+  const rows = await prisma.$queryRaw`
+    SELECT DISTINCT ON (si."productId")
+      si."productId" AS "productId", si.rate, si.qty,
+      s."saleDate" AS "saleDate", s."invoiceNumber" AS "invoiceNumber"
+    FROM "SaleItem" si
+    JOIN "Sale" s ON s.id = si."saleId"
+    WHERE s."companyId" = ${companyId}
+      AND s."customerId" = ${customerId}
+      AND s."isCancelled" = false
+      AND si."productId" = ANY(${ids}::text[])
+    ORDER BY si."productId", s."saleDate" DESC, s."createdAt" DESC
+  `;
+
+  const result = {};
+  for (const row of rows) {
+    result[row.productId] = toLastRateResult(row, { dateKey: 'saleDate', docNumberKey: 'invoiceNumber' });
+  }
+  return result;
+}
+
+/** Single Supplier+Product lookup — used when only one line's rate needs checking. */
+export async function getLastPurchaseRate(companyId, supplierId, productId) {
+  const rows = await prisma.$queryRaw`
+    SELECT pi.rate, pi.qty, p."purchaseDate" AS "purchaseDate", p."billNumber" AS "billNumber"
+    FROM "PurchaseItem" pi
+    JOIN "Purchase" p ON p.id = pi."purchaseId"
+    WHERE p."companyId" = ${companyId}
+      AND p."supplierId" = ${supplierId}
+      AND p."isCancelled" = false
+      AND pi."productId" = ${productId}
+    ORDER BY p."purchaseDate" DESC, p."createdAt" DESC
+    LIMIT 1
+  `;
+  return toLastRateResult(rows[0], { dateKey: 'purchaseDate', docNumberKey: 'billNumber' });
+}
+
+/** Batch Supplier+Product lookup for every line on a purchase bill in one round trip. */
+export async function getLastPurchaseRatesBatch(companyId, supplierId, productIds) {
+  const ids = [...new Set(productIds)].filter(Boolean);
+  if (!ids.length) return {};
+
+  const rows = await prisma.$queryRaw`
+    SELECT DISTINCT ON (pi."productId")
+      pi."productId" AS "productId", pi.rate, pi.qty,
+      p."purchaseDate" AS "purchaseDate", p."billNumber" AS "billNumber"
+    FROM "PurchaseItem" pi
+    JOIN "Purchase" p ON p.id = pi."purchaseId"
+    WHERE p."companyId" = ${companyId}
+      AND p."supplierId" = ${supplierId}
+      AND p."isCancelled" = false
+      AND pi."productId" = ANY(${ids}::text[])
+    ORDER BY pi."productId", p."purchaseDate" DESC, p."createdAt" DESC
+  `;
+
+  const result = {};
+  for (const row of rows) {
+    result[row.productId] = toLastRateResult(row, { dateKey: 'purchaseDate', docNumberKey: 'billNumber' });
+  }
+  return result;
 }

@@ -111,8 +111,8 @@ export default function SalesPage() {
                     <th className="pb-3">Customer</th>
                     <th className="pb-3 text-right">Taxable Value</th>
                     <th className="pb-3 text-right">GST</th>
-                    <th className="pb-3 text-right">Total</th>
-                    <th className="pb-3">Status</th>
+                    <th className="pb-3 pr-6 text-right">Total</th>
+                    <th className="pb-3 pl-2">Status</th>
                     <th className="pb-3 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -124,9 +124,9 @@ export default function SalesPage() {
                       <td className="py-3 text-gray-300 font-medium">{s.customer?.name || '-'}</td>
                       <td className="py-3 text-right font-mono text-gray-300">₹{formatCurrency(s.subTotal)}</td>
                       <td className="py-3 text-right font-mono text-gray-300">₹{formatCurrency(s.gstAmount)}</td>
-                      <td className="py-3 text-right font-mono font-semibold text-white">₹{formatCurrency(s.totalAmount)}</td>
-                      <td className="py-3">
-                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${STATUS_STYLES[s.status] || STATUS_STYLES.UNPAID}`}>
+                      <td className="py-3 pr-6 text-right font-mono font-semibold text-white">₹{formatCurrency(s.totalAmount)}</td>
+                      <td className="py-3 pl-2">
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-bold border whitespace-nowrap ${STATUS_STYLES[s.status] || STATUS_STYLES.UNPAID}`}>
                           {s.status?.replace('_', ' ')}
                         </span>
                       </td>

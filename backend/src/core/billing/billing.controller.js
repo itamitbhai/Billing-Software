@@ -147,3 +147,58 @@ export async function getLastSale(req, res, next) {
     res.json({ success: true, data: sale });
   } catch (err) { next(err); }
 }
+
+// ============================================
+// LAST SALE / PURCHASE RATE
+// ============================================
+
+function parseProductIds(raw) {
+  if (!raw) return [];
+  return String(raw).split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+export async function getLastSaleRate(req, res, next) {
+  try {
+    const { customerId, productId } = req.query;
+    if (!customerId || !productId) {
+      return res.status(400).json({ success: false, message: '"customerId" and "productId" are required.' });
+    }
+    const data = await billingService.getLastSaleRate(req.user.companyId, customerId, productId);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+}
+
+export async function getLastSaleRatesBatch(req, res, next) {
+  try {
+    const { customerId } = req.query;
+    const productIds = parseProductIds(req.query.productIds);
+    if (!customerId || !productIds.length) {
+      return res.status(400).json({ success: false, message: '"customerId" and "productIds" (comma-separated) are required.' });
+    }
+    const data = await billingService.getLastSaleRatesBatch(req.user.companyId, customerId, productIds);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+}
+
+export async function getLastPurchaseRate(req, res, next) {
+  try {
+    const { supplierId, productId } = req.query;
+    if (!supplierId || !productId) {
+      return res.status(400).json({ success: false, message: '"supplierId" and "productId" are required.' });
+    }
+    const data = await billingService.getLastPurchaseRate(req.user.companyId, supplierId, productId);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+}
+
+export async function getLastPurchaseRatesBatch(req, res, next) {
+  try {
+    const { supplierId } = req.query;
+    const productIds = parseProductIds(req.query.productIds);
+    if (!supplierId || !productIds.length) {
+      return res.status(400).json({ success: false, message: '"supplierId" and "productIds" (comma-separated) are required.' });
+    }
+    const data = await billingService.getLastPurchaseRatesBatch(req.user.companyId, supplierId, productIds);
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+}

@@ -49,12 +49,16 @@ export const tallyApi = {
       list: (params) => apiClient.get('/billing/sales', { params }).then(r => r.data),
       get: (id) => apiClient.get(`/billing/sales/${id}`).then(r => r.data),
       create: (data) => apiClient.post('/billing/sales', data).then(r => r.data),
-      lastForCustomer: (customerId) => apiClient.get('/billing/sales/last', { params: { customerId } }).then(r => r.data)
+      lastForCustomer: (customerId) => apiClient.get('/billing/sales/last', { params: { customerId } }).then(r => r.data),
+      lastRate: (customerId, productId) => apiClient.get('/billing/sales/last-rate', { params: { customerId, productId } }).then(r => r.data),
+      lastRateBatch: (customerId, productIds) => apiClient.get('/billing/sales/last-rate/batch', { params: { customerId, productIds: productIds.join(',') } }).then(r => r.data)
     },
     purchases: {
       list: (params) => apiClient.get('/billing/purchases', { params }).then(r => r.data),
       get: (id) => apiClient.get(`/billing/purchases/${id}`).then(r => r.data),
-      create: (data) => apiClient.post('/billing/purchases', data).then(r => r.data)
+      create: (data) => apiClient.post('/billing/purchases', data).then(r => r.data),
+      lastRate: (supplierId, productId) => apiClient.get('/billing/purchases/last-rate', { params: { supplierId, productId } }).then(r => r.data),
+      lastRateBatch: (supplierId, productIds) => apiClient.get('/billing/purchases/last-rate/batch', { params: { supplierId, productIds: productIds.join(',') } }).then(r => r.data)
     },
     payments: {
       list: (params) => apiClient.get('/billing/payments', { params }).then(r => r.data),

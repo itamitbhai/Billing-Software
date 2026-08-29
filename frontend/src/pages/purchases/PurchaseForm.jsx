@@ -2,9 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tallyApi } from '../../api/tally.api';
-import { Plus, Trash2, Save, Undo2, Package } from 'lucide-react';
+import { Plus, Trash2, Save, Undo2, Package, History, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatCurrency } from '../../utils/format';
+import { formatCurrency, formatDate } from '../../utils/format';
 import QuickAddPartyModal from '../../components/quickadd/QuickAddPartyModal';
 import QuickAddProductModal from '../../components/quickadd/QuickAddProductModal';
 import QuickAddBatchModal from '../../components/quickadd/QuickAddBatchModal';
@@ -36,6 +36,20 @@ export default function PurchaseForm() {
   const products = productsRes?.data || [];
   const company = companyRes?.data;
   const allBatches = batchesRes?.data || [];
+
+  // ── Last Purchase Rate (Supplier + Product) ─────────────────────
+  // Batched into a single request per (supplier, product-set) instead of one
+  // call per row, so adding items doesn't fan out N API calls.
+  const rowProductIds = useMemo(
+    () => [...new Set(rows.map(r => r.productId).filter(Boolean))].sort(),
+    [rows]
+  );
+  const { data: lastRatesRes, isFetching: lastRatesLoading } = useQuery({
+    queryKey: ['last-purchase-rates', supplierId, rowProductIds],
+    queryFn: () => tallyApi.billing.purchases.lastRateBatch(supplierId, rowProductIds),
+    enabled: !!supplierId && rowProductIds.length > 0,
+  });
+  const lastRates = lastRatesRes?.data || {};
 
   const selectedSupplier = suppliers.find(s => s.id === supplierId);
   const isIntraState = !company?.state || !selectedSupplier?.state
@@ -72,6 +86,8 @@ export default function PurchaseForm() {
     updated[idx] = row;
     setRows(updated);
   };
+
+  const applyLastRate = (idx, rate) => updateRow(idx, 'rate', String(rate));
 
   // ── Priced preview (mirrors backend priceItems logic) ──────────
   const pricedRows = useMemo(() => rows.map((row) => {
@@ -229,8 +245,13 @@ export default function PurchaseForm() {
                 {rows.map((row, idx) => {
                   const priced = pricedRows[idx];
                   const availableBatches = batchesForProduct(row.productId);
+                  const lastRate = row.productId ? lastRates[row.productId] : null;
+                  const showLastRateInfo = !!supplierId && !!row.productId;
+                  const currentRate = Number(row.rate) || 0;
+                  const diff = lastRate?.found && currentRate ? currentRate - lastRate.rate : 0;
                   return (
-                    <tr key={idx}>
+                    <React.Fragment key={idx}>
+                    <tr>
                       <td className="p-2 min-w-[180px]">
                         <div className="flex items-center gap-1">
                           <select
@@ -306,6 +327,42 @@ export default function PurchaseForm() {
                         </button>
                       </td>
                     </tr>
+                    {showLastRateInfo && (
+                      <tr className="bg-[#0d1224]/60">
+                        <td colSpan={8} className="px-3 pb-2.5 -mt-1">
+                          {lastRatesLoading && !lastRate ? (
+                            <span className="text-[10px] text-gray-500 italic">Checking previous rate...</span>
+                          ) : lastRate?.found ? (
+                            <div className="flex flex-wrap items-center gap-2 text-[10px]">
+                              <span className="flex items-center gap-1 text-gray-400">
+                                <History className="h-3 w-3 text-amber-500" />
+                                Last Purchased: <span className="text-white font-semibold">₹{formatCurrency(lastRate.rate)}</span>
+                              </span>
+                              <span className="text-gray-600">|</span>
+                              <span className="text-gray-400">Last Purchase Date: <span className="text-gray-300">{formatDate(lastRate.date)}</span></span>
+                              <span className="text-gray-600">|</span>
+                              <span className="text-gray-400">Last Qty: <span className="text-gray-300">{lastRate.qty}</span></span>
+                              <button
+                                type="button"
+                                onClick={() => applyLastRate(idx, lastRate.rate)}
+                                className="ml-1 flex items-center gap-1 font-bold bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded border border-amber-500/20 hover:bg-amber-500 hover:text-[#0a0e1a] cursor-pointer"
+                              >
+                                Use Last Purchase Rate ₹{formatCurrency(lastRate.rate)}
+                              </button>
+                              {diff !== 0 && (
+                                <span className={`flex items-center gap-0.5 font-bold ${diff > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                  {diff > 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                                  {diff > 0 ? '+' : ''}₹{formatCurrency(Math.abs(diff))} vs last
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-gray-500 italic">No previous purchase found for this supplier.</span>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>

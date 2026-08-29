@@ -31,7 +31,7 @@ model Purchase {
 
   @@unique([companyId, supplierId, billNumber])
   @@index([companyId, purchaseDate])
-  @@index([companyId, supplierId])
+  @@index([companyId, supplierId, purchaseDate])
 }
 
 model PurchaseItem {
@@ -41,6 +41,12 @@ model PurchaseItem {
 
   batchId String
   batch   Batch  @relation(fields: [batchId], references: [id])
+
+  // Denormalized from batch.productId (same pattern as Batch.companyId) so a
+  // "last purchase rate for Supplier+Product" lookup can filter/index directly
+  // on this table instead of joining through Batch for every row.
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
 
   qty       Int
   rate      Decimal @db.Decimal(14, 2)
@@ -58,6 +64,7 @@ model PurchaseItem {
 
   @@index([purchaseId])
   @@index([batchId])
+  @@index([productId])
 }
 
 model Sale {
@@ -95,7 +102,7 @@ model Sale {
 
   @@unique([companyId, invoiceNumber])
   @@index([companyId, saleDate])
-  @@index([companyId, customerId])
+  @@index([companyId, customerId, saleDate])
   @@index([companyId, status])
 }
 
@@ -106,6 +113,12 @@ model SaleItem {
 
   batchId String
   batch   Batch  @relation(fields: [batchId], references: [id])
+
+  // Denormalized from batch.productId (same pattern as Batch.companyId) so a
+  // "last sale rate for Customer+Product" lookup can filter/index directly on
+  // this table instead of joining through Batch for every row.
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
 
   qty       Int
   rate      Decimal @db.Decimal(14, 2)
@@ -124,6 +137,7 @@ model SaleItem {
 
   @@index([saleId])
   @@index([batchId])
+  @@index([productId])
 }
 
 model Payment {

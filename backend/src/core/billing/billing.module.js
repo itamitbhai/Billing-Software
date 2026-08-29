@@ -8,15 +8,19 @@ const billingRouter = Router();
 billingRouter.use(requireAuth);
 
 // Purchases
-billingRouter.get('/purchases',     billingController.listPurchases);
-billingRouter.get('/purchases/:id', billingController.getPurchase);
-billingRouter.post('/purchases',    billingController.createPurchase);
+billingRouter.get('/purchases',                    billingController.listPurchases);
+billingRouter.get('/purchases/last-rate',          billingController.getLastPurchaseRate);
+billingRouter.get('/purchases/last-rate/batch',    billingController.getLastPurchaseRatesBatch);
+billingRouter.get('/purchases/:id',                billingController.getPurchase);
+billingRouter.post('/purchases',                   billingController.createPurchase);
 
 // Sales
-billingRouter.get('/sales',         billingController.listSales);
-billingRouter.get('/sales/last',    billingController.getLastSale);
-billingRouter.get('/sales/:id',     billingController.getSale);
-billingRouter.post('/sales',        billingController.createSale);
+billingRouter.get('/sales',                        billingController.listSales);
+billingRouter.get('/sales/last',                   billingController.getLastSale);
+billingRouter.get('/sales/last-rate',              billingController.getLastSaleRate);
+billingRouter.get('/sales/last-rate/batch',        billingController.getLastSaleRatesBatch);
+billingRouter.get('/sales/:id',                    billingController.getSale);
+billingRouter.post('/sales',                       billingController.createSale);
 
 // Payments
 billingRouter.get('/payments',      billingController.listPayments);
