@@ -18,6 +18,7 @@ export const tallyApi = {
   // ── Masters (Parties, Stock Items/Products, Batches, Cost Centres) ─────
   parties: {
     list: (type) => apiClient.get('/masters/parties', { params: { type } }).then(r => r.data),
+    get: (id) => apiClient.get(`/masters/parties/${id}`).then(r => r.data),
     create: (data) => apiClient.post('/masters/parties', data).then(r => r.data),
     update: (id, data) => apiClient.put(`/masters/parties/${id}`, data).then(r => r.data),
     delete: (id) => apiClient.delete(`/masters/parties/${id}`).then(r => r.data)

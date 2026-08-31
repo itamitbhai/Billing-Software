@@ -1,33 +1,24 @@
-// ============================================
-// billing.prisma - Transactions, Payments, Stock Ledger
-// ============================================
-
 model Purchase {
-  id              String        @id @default(uuid())
+  id              String         @id @default(uuid())
   companyId       String
-  company         Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   financialYearId String
-  financialYear   FinancialYear @relation(fields: [financialYearId], references: [id])
-
-  supplierId String
-  supplier   Party  @relation(fields: [supplierId], references: [id])
-
-  billNumber    String // supplier's own bill/invoice number
-  purchaseDate  DateTime
-  subTotal      Decimal  @db.Decimal(14, 2)
-  gstAmount     Decimal  @default(0) @db.Decimal(14, 2)
-  totalAmount   Decimal  @db.Decimal(14, 2)
-  reverseCharge Boolean  @default(false) // GST payable by recipient under RCM (GSTR-3B 3.1(d))
-
-  voucherId String?  @unique
-  voucher   Voucher? @relation(fields: [voucherId], references: [id])
-
-  isCancelled Boolean  @default(false)
-  createdBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  items PurchaseItem[]
+  supplierId      String
+  billNumber      String
+  purchaseDate    DateTime
+  subTotal        Decimal        @db.Decimal(14, 2)
+  gstAmount       Decimal        @default(0) @db.Decimal(14, 2)
+  totalAmount     Decimal        @db.Decimal(14, 2)
+  voucherId       String?        @unique
+  isCancelled     Boolean        @default(false)
+  createdBy       String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  reverseCharge   Boolean        @default(false)
+  company         Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  financialYear   FinancialYear  @relation(fields: [financialYearId], references: [id])
+  supplier        Party          @relation(fields: [supplierId], references: [id])
+  voucher         Voucher?       @relation(fields: [voucherId], references: [id])
+  items           PurchaseItem[]
 
   @@unique([companyId, supplierId, billNumber])
   @@index([companyId, purchaseDate])
@@ -35,32 +26,24 @@ model Purchase {
 }
 
 model PurchaseItem {
-  id         String   @id @default(uuid())
-  purchaseId String
-  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
-
-  batchId String
-  batch   Batch  @relation(fields: [batchId], references: [id])
-
-  // Denormalized from batch.productId (same pattern as Batch.companyId) so a
-  // "last purchase rate for Supplier+Product" lookup can filter/index directly
-  // on this table instead of joining through Batch for every row.
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-
-  qty       Int
-  rate      Decimal @db.Decimal(14, 2)
-  gstAmount Decimal @default(0) @db.Decimal(14, 2)
-  amount    Decimal @db.Decimal(14, 2) // qty * rate + gst
-
-  // GST breakup (rate-wise, needed for GSTR-1/GSTR-3B — see SaleItem for rationale)
+  id           String   @id @default(uuid())
+  purchaseId   String
+  batchId      String
+  qty          Int
+  rate         Decimal  @db.Decimal(14, 2)
+  gstAmount    Decimal  @default(0) @db.Decimal(14, 2)
+  amount       Decimal  @db.Decimal(14, 2)
+  cgstAmount   Decimal  @default(0) @db.Decimal(14, 2)
+  gstRate      Decimal  @default(0) @db.Decimal(5, 2)
   hsnCode      String?
-  taxableValue Decimal @default(0) @db.Decimal(14, 2)
-  gstRate      Decimal @default(0) @db.Decimal(5, 2)
-  cgstAmount   Decimal @default(0) @db.Decimal(14, 2)
-  sgstAmount   Decimal @default(0) @db.Decimal(14, 2)
-  igstAmount   Decimal @default(0) @db.Decimal(14, 2)
-  itcEligible  Boolean @default(true) // false for blocked credits (e.g. motor vehicles, personal use)
+  igstAmount   Decimal  @default(0) @db.Decimal(14, 2)
+  itcEligible  Boolean  @default(true)
+  sgstAmount   Decimal  @default(0) @db.Decimal(14, 2)
+  taxableValue Decimal  @default(0) @db.Decimal(14, 2)
+  productId    String
+  batch        Batch    @relation(fields: [batchId], references: [id])
+  product      Product  @relation(fields: [productId], references: [id])
+  purchase     Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
 
   @@index([purchaseId])
   @@index([batchId])
@@ -70,35 +53,27 @@ model PurchaseItem {
 model Sale {
   id              String        @id @default(uuid())
   companyId       String
-  company         Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   financialYearId String
+  customerId      String
+  invoiceNumber   String
+  saleDate        DateTime
+  subTotal        Decimal       @db.Decimal(14, 2)
+  gstAmount       Decimal       @default(0) @db.Decimal(14, 2)
+  totalAmount     Decimal       @db.Decimal(14, 2)
+  status          InvoiceStatus @default(UNPAID)
+  voucherId       String?       @unique
+  isCancelled     Boolean       @default(false)
+  createdBy       String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  placeOfSupply   String        @default("")
+  supplyType      SupplyType    @default(TAXABLE)
+  payments        Payment[]
+  company         Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer        Party         @relation(fields: [customerId], references: [id])
   financialYear   FinancialYear @relation(fields: [financialYearId], references: [id])
-
-  customerId String
-  customer   Party  @relation(fields: [customerId], references: [id])
-
-  invoiceNumber String // server-generated via VoucherSequence
-  saleDate      DateTime
-  subTotal      Decimal       @db.Decimal(14, 2)
-  gstAmount     Decimal       @default(0) @db.Decimal(14, 2)
-  totalAmount   Decimal       @db.Decimal(14, 2)
-  status        InvoiceStatus @default(UNPAID)
-
-  // GST return classification (GSTR-1/GSTR-3B) — snapshotted at creation so historical
-  // returns stay correct even if the party's master state changes later.
-  placeOfSupply String     @default("")
-  supplyType    SupplyType @default(TAXABLE)
-
-  voucherId String?  @unique
-  voucher   Voucher? @relation(fields: [voucherId], references: [id])
-
-  isCancelled Boolean  @default(false)
-  createdBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  items    SaleItem[]
-  payments Payment[]
+  voucher         Voucher?      @relation(fields: [voucherId], references: [id])
+  items           SaleItem[]
 
   @@unique([companyId, invoiceNumber])
   @@index([companyId, saleDate])
@@ -107,33 +82,23 @@ model Sale {
 }
 
 model SaleItem {
-  id     String @id @default(uuid())
-  saleId String
-  sale   Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
-
-  batchId String
-  batch   Batch  @relation(fields: [batchId], references: [id])
-
-  // Denormalized from batch.productId (same pattern as Batch.companyId) so a
-  // "last sale rate for Customer+Product" lookup can filter/index directly on
-  // this table instead of joining through Batch for every row.
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-
-  qty       Int
-  rate      Decimal @db.Decimal(14, 2)
-  gstAmount Decimal @default(0) @db.Decimal(14, 2)
-  amount    Decimal @db.Decimal(14, 2) // qty * rate + gst
-
-  // GST breakup (rate-wise) — a blended per-invoice gstAmount can't reconstruct a
-  // rate-wise/HSN-wise return when an invoice mixes multiple GST rates, so each line
-  // snapshots its own HSN, rate, and CGST/SGST/IGST split for GSTR-1/GSTR-3B reporting.
-  hsnCode      String?
-  taxableValue Decimal @default(0) @db.Decimal(14, 2)
-  gstRate      Decimal @default(0) @db.Decimal(5, 2)
+  id           String  @id @default(uuid())
+  saleId       String
+  batchId      String
+  qty          Int
+  rate         Decimal @db.Decimal(14, 2)
+  gstAmount    Decimal @default(0) @db.Decimal(14, 2)
+  amount       Decimal @db.Decimal(14, 2)
   cgstAmount   Decimal @default(0) @db.Decimal(14, 2)
-  sgstAmount   Decimal @default(0) @db.Decimal(14, 2)
+  gstRate      Decimal @default(0) @db.Decimal(5, 2)
+  hsnCode      String?
   igstAmount   Decimal @default(0) @db.Decimal(14, 2)
+  sgstAmount   Decimal @default(0) @db.Decimal(14, 2)
+  taxableValue Decimal @default(0) @db.Decimal(14, 2)
+  productId    String
+  batch        Batch   @relation(fields: [batchId], references: [id])
+  product      Product @relation(fields: [productId], references: [id])
+  sale         Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
 
   @@index([saleId])
   @@index([batchId])
@@ -141,56 +106,45 @@ model SaleItem {
 }
 
 model Payment {
-  id        String  @id @default(uuid())
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  partyId String
-  party   Party  @relation(fields: [partyId], references: [id])
-
-  saleId String? // nullable - advance payments have no invoice yet
-  sale   Sale?   @relation(fields: [saleId], references: [id])
-
-  voucherId String?  @unique
-  voucher   Voucher? @relation(fields: [voucherId], references: [id])
-
+  id              String        @id @default(uuid())
+  companyId       String
+  partyId         String
+  saleId          String?
+  voucherId       String?       @unique
   amount          Decimal       @db.Decimal(14, 2)
   method          PaymentMethod
-  referenceNumber String? // UPI txn id / cheque no / bank ref
+  referenceNumber String?
   paymentDate     DateTime
   notes           String?
-
-  recordedById String?
-  recordedBy   User?   @relation("RecordedBy", fields: [recordedById], references: [id])
-
-  createdAt DateTime @default(now())
+  recordedById    String?
+  createdAt       DateTime      @default(now())
+  company         Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  party           Party         @relation(fields: [partyId], references: [id])
+  recordedBy      User?         @relation("RecordedBy", fields: [recordedById], references: [id])
+  sale            Sale?         @relation(fields: [saleId], references: [id])
+  voucher         Voucher?      @relation(fields: [voucherId], references: [id])
 
   @@index([companyId, partyId])
   @@index([companyId, paymentDate])
   @@index([saleId])
 }
 
-// Source-of-truth audit trail for inventory movement.
-// Batch.currentQty stays as a fast-read cache kept in sync in the same transaction.
 model StockLedgerEntry {
-  id        String  @id @default(uuid())
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-  batchId   String
-  batch     Batch   @relation(fields: [batchId], references: [id])
-
+  id            String             @id @default(uuid())
+  companyId     String
+  productId     String
+  batchId       String
   movementType  StockMovementType
   referenceType StockReferenceType
-  referenceId   String? // Purchase.id / Sale.id / null for manual adjustment
+  referenceId   String?
   qty           Int
-  balanceQty    Int // running balance snapshot after this entry
+  balanceQty    Int
   rate          Decimal            @db.Decimal(14, 2)
   notes         String?
-
-  createdAt DateTime @default(now())
+  createdAt     DateTime           @default(now())
+  batch         Batch              @relation(fields: [batchId], references: [id])
+  company       Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  product       Product            @relation(fields: [productId], references: [id])
 
   @@index([companyId, productId, createdAt])
   @@index([batchId])

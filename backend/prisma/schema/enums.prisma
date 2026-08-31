@@ -1,7 +1,3 @@
-// ============================================
-// enums.prisma - Enums for B2B Medical Billing
-// ============================================
-
 enum Role {
   ADMIN
   ACCOUNTANT

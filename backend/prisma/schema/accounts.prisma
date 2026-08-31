@@ -1,43 +1,37 @@
-// ============================================
-// accounts.prisma - Chart of Accounts
-// ============================================
-
 model LedgerGroup {
   id        String        @id @default(uuid())
   companyId String
-  company   Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name      String
   nature    LedgerNature
   isSystem  Boolean       @default(false)
   parentId  String?
-  parent    LedgerGroup?  @relation("GroupHierarchy", fields: [parentId], references: [id])
-  children  LedgerGroup[] @relation("GroupHierarchy")
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
-
-  ledgers Ledger[]
+  ledgers   Ledger[]
+  company   Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent    LedgerGroup?  @relation("GroupHierarchy", fields: [parentId], references: [id])
+  children  LedgerGroup[] @relation("GroupHierarchy")
 
   @@unique([companyId, name])
   @@index([companyId])
 }
 
 model Ledger {
-  id                 String      @id @default(uuid())
+  id                 String        @id @default(uuid())
   companyId          String
-  company            Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name               String
   groupId            String
-  group              LedgerGroup @relation(fields: [groupId], references: [id])
-  openingBalance     Decimal     @default(0) @db.Decimal(14, 2)
-  openingBalanceType EntryType   @default(DEBIT)
+  openingBalance     Decimal       @default(0) @db.Decimal(14, 2)
+  openingBalanceType EntryType     @default(DEBIT)
   description        String?
-  isSystem           Boolean     @default(false)
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
-
-  party        Party?
-  bankAccount  BankAccount?
-  voucherLines VoucherLine[]
+  isSystem           Boolean       @default(false)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  bankAccount        BankAccount?
+  company            Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  group              LedgerGroup   @relation(fields: [groupId], references: [id])
+  party              Party?
+  voucherLines       VoucherLine[]
 
   @@unique([companyId, name])
   @@index([companyId])

@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tallyApi } from '../../api/tally.api';
 import { Plus, Trash2, Save, Undo2, Calculator, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatRupees } from '../../utils/format';
+import { formatCurrency } from '../../utils/format';
 import QuickAddPartyModal from '../../components/quickadd/QuickAddPartyModal';
 import QuickAddLedgerModal from '../../components/quickadd/QuickAddLedgerModal';
 import QuickAddCostCentreModal from '../../components/quickadd/QuickAddCostCentreModal';
@@ -63,7 +63,7 @@ export default function VoucherForm() {
     setLines((voucher.lines || []).map(l => ({
       ledgerId: l.ledgerId,
       type: l.type,
-      amount: String(Number(l.amount) / 100),
+      amount: String(Number(l.amount)),
       description: l.description || '',
       costCentreId: l.costCentreId || ''
     })));
@@ -118,7 +118,7 @@ export default function VoucherForm() {
     const formattedLines = lines.map(l => ({
       ledgerId: l.ledgerId,
       type: l.type,
-      amount: BigInt(Math.round(Number(l.amount) * 100)).toString(), // to paise String
+      amount: Number(l.amount).toFixed(2),
       description: l.description,
       costCentreId: l.costCentreId || null,
     }));
@@ -315,11 +315,11 @@ export default function VoucherForm() {
             <div className="flex flex-wrap gap-6">
               <div>
                 <span className="text-gray-400">Total Debits: </span>
-                <span className="text-white font-bold text-sm">{formatRupees(debitsTotal * 100)}</span>
+                <span className="text-white font-bold text-sm">₹{formatCurrency(debitsTotal)}</span>
               </div>
               <div>
                 <span className="text-gray-400">Total Credits: </span>
-                <span className="text-white font-bold text-sm">{formatRupees(creditsTotal * 100)}</span>
+                <span className="text-white font-bold text-sm">₹{formatCurrency(creditsTotal)}</span>
               </div>
             </div>
 
@@ -327,7 +327,7 @@ export default function VoucherForm() {
               {difference !== 0 ? (
                 <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/20 text-red-400 px-3 py-1.5 rounded-lg">
                   <Calculator className="h-4 w-4" />
-                  Difference: {formatRupees(difference * 100)} Out of Balance
+                  Difference: ₹{formatCurrency(difference)} Out of Balance
                 </div>
               ) : (
                 <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-1.5 rounded-lg">

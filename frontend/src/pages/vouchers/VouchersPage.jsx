@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tallyApi } from '../../api/tally.api';
 import { Receipt, Plus, Search, Calendar, ChevronLeft, ChevronRight, Eye, Edit2, Trash2, Loader2 } from 'lucide-react';
-import { formatDate, formatRupees } from '../../utils/format';
+import { formatDate, formatCurrency } from '../../utils/format';
 import { toast } from 'sonner';
 
 const MANUAL_TYPES = ['JOURNAL', 'CONTRA', 'CREDIT_NOTE', 'DEBIT_NOTE'];
@@ -43,7 +43,7 @@ export default function VouchersPage() {
   const handleViewDetails = async (id) => {
     try {
       const res = await tallyApi.vouchers.get(id);
-      setSelectedVoucher(res);
+      setSelectedVoucher(res.data);
     } catch (err) {
       toast.error('Failed to load voucher details');
     }
@@ -142,7 +142,7 @@ export default function VouchersPage() {
                       // Total amount is simply the sum of debit lines
                       const totalAmt = v.lines
                         .filter(l => l.type === 'DEBIT')
-                        .reduce((sum, l) => sum + BigInt(l.amount), 0n);
+                        .reduce((sum, l) => sum + Number(l.amount), 0);
 
                       return (
                         <tr key={v.id} className="hover:bg-[#111827]/20">
@@ -154,7 +154,7 @@ export default function VouchersPage() {
                             </span>
                           </td>
                           <td className="py-3 text-gray-300 font-medium">{v.party?.name || 'Journal Adjustment'}</td>
-                          <td className="py-3 text-right font-mono font-semibold text-white">{formatRupees(totalAmt)}</td>
+                          <td className="py-3 text-right font-mono font-semibold text-white">₹{formatCurrency(totalAmt)}</td>
                           <td className="py-3 text-right">
                             <div className="flex items-center justify-end gap-2 text-gray-400">
                               {MANUAL_TYPES.includes(v.type) && (
@@ -239,7 +239,7 @@ export default function VouchersPage() {
                       }`}>{line.type === 'DEBIT' ? 'Dr' : 'Cr'}</span>
                       <span className="text-gray-300">{line.ledger?.name}</span>
                     </div>
-                    <span className="font-mono text-white font-semibold">{formatRupees(line.amount)}</span>
+                    <span className="font-mono text-white font-semibold">₹{formatCurrency(line.amount)}</span>
                   </div>
                 ))}
               </div>

@@ -1,58 +1,52 @@
-// ============================================
-// auth.prisma - Companies, Users, Sessions, Audit Log
-// ============================================
-
 model Company {
-  id            String   @id @default(uuid())
-  name          String
-  gstin         String?
-  pan           String?
-  state         String
-  address       String?
-  phone         String?
-  email         String?  @unique
-  invoicePrefix String   @default("INV")
-  dlNumber      String? // Drug License No. (pharma statutory requirement, printed on GST invoices)
-  bankName      String?
-  accountNo     String?
-  ifscCode      String?
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  users              User[]
-  parties            Party[]
-  products           Product[]
+  id                 String             @id @default(uuid())
+  name               String
+  gstin              String?
+  pan                String?
+  state              String
+  address            String?
+  phone              String?
+  email              String?            @unique
+  invoicePrefix      String             @default("INV")
+  bankName           String?
+  accountNo          String?
+  ifscCode           String?
+  isActive           Boolean            @default(true)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  dlNumber           String?
+  auditLogs          AuditLog[]
+  bankAccounts       BankAccount[]
   costCentres        CostCentre[]
-  ledgerGroups       LedgerGroup[]
-  ledgers            Ledger[]
   financialYears     FinancialYear[]
-  voucherSequences   VoucherSequence[]
-  vouchers           Voucher[]
+  ledgers            Ledger[]
+  ledgerGroups       LedgerGroup[]
+  parties            Party[]
+  payments           Payment[]
+  products           Product[]
   purchases          Purchase[]
   sales              Sale[]
-  payments           Payment[]
   stockLedgerEntries StockLedgerEntry[]
-  bankAccounts       BankAccount[]
-  auditLogs          AuditLog[]
+  users              User[]
+  vouchers           Voucher[]
+  voucherSequences   VoucherSequence[]
 }
 
 model User {
-  id           String    @id @default(uuid())
+  id           String     @id @default(uuid())
   companyId    String
-  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name         String
-  email        String    @unique
+  email        String     @unique
   passwordHash String
-  role         Role      @default(STAFF)
-  isActive     Boolean   @default(true)
+  role         Role       @default(STAFF)
+  isActive     Boolean    @default(true)
   lastLoginAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  sessions  Session[]
-  payments  Payment[]  @relation("RecordedBy")
-  auditLogs AuditLog[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  auditLogs    AuditLog[]
+  payments     Payment[]  @relation("RecordedBy")
+  sessions     Session[]
+  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([companyId])
 }
@@ -60,13 +54,13 @@ model User {
 model Session {
   id               String   @id @default(uuid())
   userId           String
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   refreshTokenHash String   @unique
   userAgent        String?
   ipAddress        String?
   isRevoked        Boolean  @default(false)
   expiresAt        DateTime
   createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
@@ -74,15 +68,15 @@ model Session {
 model AuditLog {
   id         String   @id @default(uuid())
   companyId  String?
-  company    Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
   userId     String?
-  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   action     String
   entityType String?
   entityId   String?
   metadata   Json?
   ipAddress  String?
   createdAt  DateTime @default(now())
+  company    Company? @relation(fields: [companyId], references: [id])
+  user       User?    @relation(fields: [userId], references: [id])
 
   @@index([companyId])
   @@index([userId])

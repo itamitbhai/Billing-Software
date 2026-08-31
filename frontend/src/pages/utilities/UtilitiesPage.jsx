@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tallyApi } from '../../api/tally.api';
 import { authApi } from '../../api/auth.api';
 import { useAuthStore } from '../../store/auth.store';
-import { Loader2, Plus, Settings, Building, Users, Mail, Shield, ShieldCheck, Lock, UserPlus, ScrollText, ChevronLeft, ChevronRight, FileText, Eye, Printer } from 'lucide-react';
+import { Loader2, Plus, Settings, Building, Users, Mail, Shield, ShieldCheck, Lock, UserPlus, ScrollText, ChevronLeft, ChevronRight, FileText, Eye, Printer, X, ExternalLink } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../utils/format';
 import { toast } from 'sonner';
 
@@ -28,6 +28,9 @@ export default function UtilitiesPage() {
 
   // Audit Log pagination
   const [auditPage, setAuditPage] = useState(1);
+
+  // Audit Log — clicked entry detail (what exactly was created/edited)
+  const [auditDetail, setAuditDetail] = useState(null); // { log, loading, error, data }
 
   // Sale Invoices pagination
   const [invoicePage, setInvoicePage] = useState(1);
@@ -122,6 +125,34 @@ export default function UtilitiesPage() {
       return toast.error('Password must be at least 6 characters long');
     }
     registerUserMut.mutate(userForm);
+  };
+
+  // Clicking an audit log row opens the actual record that was created/edited/deleted,
+  // so the admin can see exactly what the user did — not just the raw log line.
+  const handleOpenAuditEntity = async (log) => {
+    if (!log.entityId) return;
+
+    if (log.entityType === 'Sale') {
+      window.open(`/sales/${log.entityId}/invoice`, '_blank');
+      return;
+    }
+
+    setAuditDetail({ log, loading: true, error: null, data: null });
+    try {
+      let data = null;
+      if (log.entityType === 'Purchase') data = (await tallyApi.billing.purchases.get(log.entityId)).data;
+      else if (log.entityType === 'Payment') data = (await tallyApi.billing.payments.get(log.entityId)).data;
+      else if (log.entityType === 'Voucher') data = (await tallyApi.vouchers.get(log.entityId)).data;
+      else if (log.entityType === 'Party') data = (await tallyApi.parties.get(log.entityId)).data;
+      setAuditDetail({ log, loading: false, error: null, data });
+    } catch (err) {
+      setAuditDetail({
+        log,
+        loading: false,
+        error: err.response?.data?.message || 'This record could not be loaded — it may have been deleted since this action.',
+        data: null,
+      });
+    }
   };
 
   return (
@@ -407,7 +438,12 @@ export default function UtilitiesPage() {
                     </thead>
                     <tbody className="divide-y divide-gray-800/40">
                       {auditLogs.map(log => (
-                        <tr key={log.id} className="text-xs">
+                        <tr
+                          key={log.id}
+                          onClick={() => handleOpenAuditEntity(log)}
+                          title={log.entityId ? 'Click to view what was created/edited' : undefined}
+                          className={`text-xs ${log.entityId ? 'cursor-pointer hover:bg-[#111827]/40' : ''}`}
+                        >
                           <td className="py-3 pr-4 text-gray-400 font-mono whitespace-nowrap">
                             {new Date(log.createdAt).toLocaleString('en-IN')}
                           </td>
@@ -420,7 +456,10 @@ export default function UtilitiesPage() {
                             </span>
                           </td>
                           <td className="py-3 pr-4 text-gray-400 font-mono">
-                            {log.entityType || '-'}{log.entityId ? ` #${log.entityId.slice(0, 8)}` : ''}
+                            <span className={log.entityId ? 'inline-flex items-center gap-1 text-amber-500 hover:underline' : ''}>
+                              {log.entityType || '-'}{log.entityId ? ` #${log.entityId.slice(0, 8)}` : ''}
+                              {log.entityId && <Eye className="h-3 w-3" />}
+                            </span>
                           </td>
                           <td className="py-3 text-gray-500 font-mono">{log.ipAddress || '-'}</td>
                         </tr>
@@ -545,6 +584,121 @@ export default function UtilitiesPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Audit Entity Detail Modal (click-through from Audit Log) ── */}
+      {auditDetail && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => setAuditDetail(null)}
+        >
+          <div
+            className="glass max-w-lg w-full max-h-[85vh] overflow-y-auto p-6 rounded-xl border border-gray-800 shadow-2xl relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-gray-800 pb-3 mb-4">
+              <div>
+                <h3 className="text-base font-bold text-white">{auditDetail.log.action.replace(/_/g, ' ')}</h3>
+                <p className="text-[11px] text-gray-500 mt-0.5">
+                  {auditDetail.log.user ? `${auditDetail.log.user.name} (${auditDetail.log.user.role})` : 'System'}
+                  {' · '}{new Date(auditDetail.log.createdAt).toLocaleString('en-IN')}
+                </p>
+              </div>
+              <button onClick={() => setAuditDetail(null)} className="text-gray-400 hover:text-white cursor-pointer">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {auditDetail.loading ? (
+              <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>
+            ) : auditDetail.error ? (
+              <div className="text-center py-6 text-rose-500 text-sm">{auditDetail.error}</div>
+            ) : !auditDetail.data ? (
+              <div className="text-center py-6 text-gray-500 text-sm">No detail view available for "{auditDetail.log.entityType}" records.</div>
+            ) : (
+              <div className="space-y-4 text-xs">
+                {auditDetail.log.entityType === 'Purchase' && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><p className="text-gray-500">Bill No.</p><p className="font-semibold text-white font-mono mt-0.5">{auditDetail.data.billNumber}</p></div>
+                      <div><p className="text-gray-500">Date</p><p className="font-semibold text-white mt-0.5">{formatDate(auditDetail.data.purchaseDate)}</p></div>
+                      <div><p className="text-gray-500">Supplier</p><p className="font-semibold text-white mt-0.5">{auditDetail.data.supplier?.name || '-'}</p></div>
+                      <div><p className="text-gray-500">Total</p><p className="font-semibold text-white mt-0.5">₹{formatCurrency(auditDetail.data.totalAmount)}</p></div>
+                    </div>
+                    <div className="border-t border-gray-800 pt-3 space-y-1.5">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Items</p>
+                      {auditDetail.data.items?.map((it, idx) => (
+                        <div key={it.id || idx} className="flex justify-between text-gray-300">
+                          <span>{it.batch?.product?.name || '-'} ({it.batch?.batchNumber})</span>
+                          <span className="font-mono">{it.qty} × ₹{formatCurrency(it.rate)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={() => navigate('/purchases')} className="text-amber-500 hover:underline flex items-center gap-1">
+                      <ExternalLink className="h-3 w-3" /> Open Purchases module
+                    </button>
+                  </>
+                )}
+
+                {auditDetail.log.entityType === 'Payment' && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><p className="text-gray-500">Amount</p><p className="font-semibold text-white mt-0.5">₹{formatCurrency(auditDetail.data.amount)}</p></div>
+                      <div><p className="text-gray-500">Date</p><p className="font-semibold text-white mt-0.5">{formatDate(auditDetail.data.paymentDate)}</p></div>
+                      <div><p className="text-gray-500">Party</p><p className="font-semibold text-white mt-0.5">{auditDetail.data.party?.name || '-'}</p></div>
+                      <div><p className="text-gray-500">Method</p><p className="font-semibold text-white mt-0.5">{auditDetail.data.method?.replace('_', ' ')}</p></div>
+                      <div><p className="text-gray-500">Reference</p><p className="font-semibold text-white mt-0.5 font-mono">{auditDetail.data.referenceNumber || '-'}</p></div>
+                      <div><p className="text-gray-500">Linked Invoice</p><p className="font-semibold text-white mt-0.5 font-mono">{auditDetail.data.sale?.invoiceNumber || '-'}</p></div>
+                    </div>
+                    <button onClick={() => navigate('/payments')} className="text-amber-500 hover:underline flex items-center gap-1">
+                      <ExternalLink className="h-3 w-3" /> Open Payments module
+                    </button>
+                  </>
+                )}
+
+                {auditDetail.log.entityType === 'Voucher' && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><p className="text-gray-500">Voucher No.</p><p className="font-semibold text-white font-mono mt-0.5">{auditDetail.data.voucherNumber}</p></div>
+                      <div><p className="text-gray-500">Date</p><p className="font-semibold text-white mt-0.5">{formatDate(auditDetail.data.date)}</p></div>
+                      <div><p className="text-gray-500">Type</p><p className="font-semibold text-amber-500 mt-0.5">{auditDetail.data.type}</p></div>
+                      <div><p className="text-gray-500">Party</p><p className="font-semibold text-white mt-0.5">{auditDetail.data.party?.name || 'General Journal'}</p></div>
+                    </div>
+                    <div className="border-t border-gray-800 pt-3 space-y-1.5">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Ledger Lines</p>
+                      {auditDetail.data.lines?.map((line, idx) => (
+                        <div key={line.id || idx} className="flex justify-between text-gray-300">
+                          <span>{line.type === 'DEBIT' ? 'Dr' : 'Cr'} {line.ledger?.name}</span>
+                          <span className="font-mono text-white">₹{formatCurrency(line.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {auditDetail.data.narration && <p className="text-gray-400 italic">"{auditDetail.data.narration}"</p>}
+                    <button onClick={() => navigate('/vouchers')} className="text-amber-500 hover:underline flex items-center gap-1">
+                      <ExternalLink className="h-3 w-3" /> Open Vouchers module
+                    </button>
+                  </>
+                )}
+
+                {auditDetail.log.entityType === 'Party' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><p className="text-gray-500">Name</p><p className="font-semibold text-white mt-0.5">{auditDetail.data.name}</p></div>
+                    <div><p className="text-gray-500">Type</p><p className="font-semibold text-white mt-0.5">{auditDetail.data.type}</p></div>
+                    <div><p className="text-gray-500">GSTIN</p><p className="font-semibold text-white mt-0.5 font-mono">{auditDetail.data.gstin || '-'}</p></div>
+                    <div><p className="text-gray-500">Phone</p><p className="font-semibold text-white mt-0.5">{auditDetail.data.phone || '-'}</p></div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {auditDetail.log.metadata && (
+              <div className="border-t border-gray-800 mt-4 pt-3">
+                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Recorded at the time of this action</p>
+                <pre className="text-[10px] text-gray-400 font-mono bg-[#0d1224] rounded-lg p-2.5 overflow-x-auto">{JSON.stringify(auditDetail.log.metadata, null, 2)}</pre>
+              </div>
+            )}
           </div>
         </div>
       )}

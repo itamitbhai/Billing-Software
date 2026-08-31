@@ -1,38 +1,31 @@
-// ============================================
-// vouchers.prisma - Double Entry Vouchers
-// ============================================
-
 model FinancialYear {
-  id        String   @id @default(uuid())
+  id        String            @id @default(uuid())
   companyId String
-  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name      String
   startDate DateTime
   endDate   DateTime
-  isActive  Boolean  @default(false)
-  isClosed  Boolean  @default(false) // blocks new postings once the year is closed
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  vouchers  Voucher[]
-  sales     Sale[]
+  isActive  Boolean           @default(false)
+  isClosed  Boolean           @default(false)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  company   Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
   purchases Purchase[]
+  sales     Sale[]
+  vouchers  Voucher[]
   sequences VoucherSequence[]
 
   @@unique([companyId, name])
   @@index([companyId])
 }
 
-// Atomic per-(company, financial year, type) counter — avoids the
-// count()-then-pad race condition that produced duplicate voucher numbers.
 model VoucherSequence {
   id              String        @id @default(uuid())
   companyId       String
-  company         Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   financialYearId String
-  financialYear   FinancialYear @relation(fields: [financialYearId], references: [id], onDelete: Cascade)
   type            VoucherType
   lastNumber      Int           @default(0)
+  company         Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  financialYear   FinancialYear @relation(fields: [financialYearId], references: [id], onDelete: Cascade)
 
   @@unique([companyId, financialYearId, type])
 }
@@ -40,28 +33,25 @@ model VoucherSequence {
 model Voucher {
   id              String        @id @default(uuid())
   companyId       String
-  company         Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   voucherNumber   String
   type            VoucherType
   date            DateTime
   narration       String?
   partyId         String?
-  party           Party?        @relation(fields: [partyId], references: [id])
   financialYearId String
+  isDeleted       Boolean       @default(false)
+  deletedAt       DateTime?
+  deletedBy       String?
+  createdBy       String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  payment         Payment?
+  purchase        Purchase?
+  sale            Sale?
+  company         Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   financialYear   FinancialYear @relation(fields: [financialYearId], references: [id])
-
-  isDeleted Boolean   @default(false) // cancelled, never hard-deleted
-  deletedAt DateTime?
-  deletedBy String?
-
-  createdBy String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  lines    VoucherLine[]
-  sale     Sale?
-  purchase Purchase?
-  payment  Payment?
+  party           Party?        @relation(fields: [partyId], references: [id])
+  lines           VoucherLine[]
 
   @@unique([companyId, type, voucherNumber])
   @@index([companyId, date])
@@ -70,22 +60,21 @@ model Voucher {
 }
 
 model VoucherLine {
-  id           String      @id @default(uuid())
-  voucherId    String
-  voucher      Voucher     @relation(fields: [voucherId], references: [id], onDelete: Cascade)
-  ledgerId     String
-  ledger       Ledger      @relation(fields: [ledgerId], references: [id])
-  type         EntryType
-  amount       Decimal     @db.Decimal(14, 2)
-  cgstAmount   Decimal     @default(0) @db.Decimal(14, 2)
-  sgstAmount   Decimal     @default(0) @db.Decimal(14, 2)
-  igstAmount   Decimal     @default(0) @db.Decimal(14, 2)
-  costCentreId String?
-  costCentre   CostCentre? @relation(fields: [costCentreId], references: [id])
-  description  String?
-  createdAt    DateTime    @default(now())
-
+  id             String              @id @default(uuid())
+  voucherId      String
+  ledgerId       String
+  type           EntryType
+  amount         Decimal             @db.Decimal(14, 2)
+  cgstAmount     Decimal             @default(0) @db.Decimal(14, 2)
+  sgstAmount     Decimal             @default(0) @db.Decimal(14, 2)
+  igstAmount     Decimal             @default(0) @db.Decimal(14, 2)
+  costCentreId   String?
+  description    String?
+  createdAt      DateTime            @default(now())
   reconciliation BankReconciliation?
+  costCentre     CostCentre?         @relation(fields: [costCentreId], references: [id])
+  ledger         Ledger              @relation(fields: [ledgerId], references: [id])
+  voucher        Voucher             @relation(fields: [voucherId], references: [id], onDelete: Cascade)
 
   @@index([voucherId])
   @@index([ledgerId])
