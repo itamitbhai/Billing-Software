@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { tallyApi } from '../../api/tally.api';
 import { toast } from 'sonner';
 
-const emptyForm = (defaultType) => ({ name: '', type: defaultType, gstin: '', phone: '', state: '' });
+const emptyForm = (defaultType) => ({ name: '', type: defaultType, gstin: '', phone: '', state: '', pincode: '', idType: 'DRUG_LICENSE', dlNumber: '' });
 
 // Compact "create Party/Customer/Supplier on the spot" modal — used from any
 // page with a Party dropdown so the user never has to leave to Masters and back.
@@ -31,6 +31,8 @@ export default function QuickAddPartyModal({ open, onClose, defaultType = 'CUSTO
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.name.trim()) return toast.error('Name is required');
+    if (!form.dlNumber.trim()) return toast.error(form.idType === 'DOCTOR_REG' ? 'Doctor Registration No. is required' : 'Drug License No. is required');
+    if (!form.pincode.trim()) return toast.error('Pincode is required');
     createMut.mutate(form);
   };
 
@@ -62,9 +64,30 @@ export default function QuickAddPartyModal({ open, onClose, defaultType = 'CUSTO
               <input type="text" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white outline-none text-sm" />
             </div>
           </div>
-          <div>
-            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">State (Optional, for GST)</label>
-            <input type="text" value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} placeholder="Maharashtra" className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white placeholder-gray-600 outline-none text-sm" />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">State (Optional, for GST)</label>
+              <input type="text" value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} placeholder="Maharashtra" className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white placeholder-gray-600 outline-none text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Pincode</label>
+              <input type="text" required value={form.pincode} onChange={e => setForm({ ...form, pincode: e.target.value })} placeholder="400001" className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white placeholder-gray-600 outline-none text-sm font-mono" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">ID Type</label>
+              <select value={form.idType} onChange={e => setForm({ ...form, idType: e.target.value })} className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white outline-none text-sm">
+                <option value="DRUG_LICENSE">Drug License No.</option>
+                <option value="DOCTOR_REG">Doctor Registration No.</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
+                {form.idType === 'DOCTOR_REG' ? 'Doctor Registration No.' : 'Drug License No.'}
+              </label>
+              <input type="text" required value={form.dlNumber} onChange={e => setForm({ ...form, dlNumber: e.target.value })} placeholder={form.idType === 'DOCTOR_REG' ? 'MH-12345' : 'JH-DH1-155063/155064'} className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white placeholder-gray-600 outline-none text-sm" />
+            </div>
           </div>
           <div className="flex justify-end gap-3 pt-3">
             <button type="button" onClick={onClose} className="px-4 py-2 border border-gray-800 text-gray-400 hover:text-white rounded-lg text-xs">Cancel</button>

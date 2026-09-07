@@ -149,7 +149,7 @@ export default function InvoicePrint() {
           <p className="font-bold">Buyer (Bill to)</p>
           <p className="font-bold text-[13px]">{customer?.name}</p>
           <p className="whitespace-pre-line">{customer?.address}</p>
-          {customer?.dlNumber && <p>DL No. {customer.dlNumber}</p>}
+          {customer?.dlNumber && <p>{customer.idType === 'DOCTOR_REG' ? 'Doctor Reg. No.' : 'DL No.'} {customer.dlNumber}</p>}
           {customer?.phone && <p>Mobile No. {customer.phone}</p>}
           <p>{[customer?.city, customer?.state, customer?.pincode].filter(Boolean).join(', ')}{customer?.state ? ', India' : ''}</p>
           {customer?.gstin && <p>GSTIN/UIN : {customer.gstin}</p>}

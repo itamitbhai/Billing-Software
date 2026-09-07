@@ -350,7 +350,7 @@ export default function PurchaseForm() {
                                 Use Last Purchase Rate ₹{formatCurrency(lastRate.rate)}
                               </button>
                               {diff !== 0 && (
-                                <span className={`flex items-center gap-0.5 font-bold ${diff > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                <span className={`flex items-center gap-0.5 font-bold ${diff > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
                                   {diff > 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
                                   {diff > 0 ? '+' : ''}₹{formatCurrency(Math.abs(diff))} vs last
                                 </span>

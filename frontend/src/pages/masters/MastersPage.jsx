@@ -12,7 +12,7 @@ export default function MastersPage() {
   // Modal States
   const [partyModal, setPartyModal] = useState(false);
   const [editingPartyId, setEditingPartyId] = useState(null);
-  const [partyForm, setPartyForm] = useState({ name: '', type: 'CUSTOMER', gstin: '', dlNumber: '', phone: '', email: '', address: '', state: '', creditLimit: '0', creditDays: 0 });
+  const [partyForm, setPartyForm] = useState({ name: '', type: 'CUSTOMER', gstin: '', idType: 'DRUG_LICENSE', dlNumber: '', phone: '', email: '', address: '', state: '', pincode: '', creditLimit: '0', creditDays: 0 });
   const [selectedParty, setSelectedParty] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
 
@@ -44,7 +44,7 @@ export default function MastersPage() {
       queryClient.invalidateQueries({ queryKey: ['parties'] });
       toast.success('Party and backing ledger created');
       setPartyModal(false);
-      setPartyForm({ name: '', type: 'CUSTOMER', gstin: '', dlNumber: '', phone: '', email: '', address: '', state: '', creditLimit: '0', creditDays: 0 });
+      setPartyForm({ name: '', type: 'CUSTOMER', gstin: '', idType: 'DRUG_LICENSE', dlNumber: '', phone: '', email: '', address: '', state: '', pincode: '', creditLimit: '0', creditDays: 0 });
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Error creating party')
   });
@@ -62,7 +62,7 @@ export default function MastersPage() {
       toast.success('Party updated');
       setPartyModal(false);
       setEditingPartyId(null);
-      setPartyForm({ name: '', type: 'CUSTOMER', gstin: '', dlNumber: '', phone: '', email: '', address: '', state: '', creditLimit: '0', creditDays: 0 });
+      setPartyForm({ name: '', type: 'CUSTOMER', gstin: '', idType: 'DRUG_LICENSE', dlNumber: '', phone: '', email: '', address: '', state: '', pincode: '', creditLimit: '0', creditDays: 0 });
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Error updating party')
   });
@@ -183,13 +183,13 @@ export default function MastersPage() {
     if (party) {
       setEditingPartyId(party.id);
       setPartyForm({
-        name: party.name, type: party.type, gstin: party.gstin || '', dlNumber: party.dlNumber || '',
-        phone: party.phone || '', email: party.email || '', address: party.address || '', state: party.state || '',
+        name: party.name, type: party.type, gstin: party.gstin || '', idType: party.idType || 'DRUG_LICENSE', dlNumber: party.dlNumber || '',
+        phone: party.phone || '', email: party.email || '', address: party.address || '', state: party.state || '', pincode: party.pincode || '',
         creditLimit: String(party.creditLimit || '0'), creditDays: party.creditPeriodDays || 0
       });
     } else {
       setEditingPartyId(null);
-      setPartyForm({ name: '', type: 'CUSTOMER', gstin: '', dlNumber: '', phone: '', email: '', address: '', state: '', creditLimit: '0', creditDays: 0 });
+      setPartyForm({ name: '', type: 'CUSTOMER', gstin: '', idType: 'DRUG_LICENSE', dlNumber: '', phone: '', email: '', address: '', state: '', pincode: '', creditLimit: '0', creditDays: 0 });
     }
     setPartyModal(true);
   };
@@ -510,8 +510,23 @@ export default function MastersPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Drug License No. (Optional)</label>
-                  <input type="text" value={partyForm.dlNumber} onChange={e => setPartyForm({ ...partyForm, dlNumber: e.target.value })} placeholder="JH-DH1-155063/155064" className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white placeholder-gray-600 outline-none text-sm" />
+                  <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">Pincode</label>
+                  <input type="text" required value={partyForm.pincode} onChange={e => setPartyForm({ ...partyForm, pincode: e.target.value })} placeholder="400001" className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white placeholder-gray-600 outline-none text-sm font-mono" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">ID Type</label>
+                  <select value={partyForm.idType} onChange={e => setPartyForm({ ...partyForm, idType: e.target.value })} className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white outline-none text-sm">
+                    <option value="DRUG_LICENSE">Drug License No.</option>
+                    <option value="DOCTOR_REG">Doctor Registration No.</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
+                    {partyForm.idType === 'DOCTOR_REG' ? 'Doctor Registration No.' : 'Drug License No.'}
+                  </label>
+                  <input type="text" required value={partyForm.dlNumber} onChange={e => setPartyForm({ ...partyForm, dlNumber: e.target.value })} placeholder={partyForm.idType === 'DOCTOR_REG' ? 'MH-12345' : 'JH-DH1-155063/155064'} className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white placeholder-gray-600 outline-none text-sm" />
                 </div>
               </div>
               <div>
@@ -664,7 +679,12 @@ export default function MastersPage() {
               </div>
 
               <div className="border-t border-gray-800 pt-3">
-                <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Drug License No.</span>
+                <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Pincode</span>
+                <span className="text-white font-mono font-medium">{selectedParty.pincode || 'Not Provided'}</span>
+              </div>
+
+              <div className="border-t border-gray-800 pt-3">
+                <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{selectedParty.idType === 'DOCTOR_REG' ? 'Doctor Registration No.' : 'Drug License No.'}</span>
                 <span className="text-white font-mono font-medium">{selectedParty.dlNumber || 'Not Provided'}</span>
               </div>
 

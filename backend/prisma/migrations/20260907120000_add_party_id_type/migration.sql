@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Party" ADD COLUMN     "idType" TEXT NOT NULL DEFAULT 'DRUG_LICENSE';

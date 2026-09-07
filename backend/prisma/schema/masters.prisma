@@ -21,6 +21,7 @@ model Party {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
   dlNumber         String?
+  idType           String     @default("DRUG_LICENSE")
   company          Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
   ledger           Ledger     @relation(fields: [ledgerId], references: [id])
   payments         Payment[]

@@ -22,12 +22,21 @@ export async function getParty(req, res, next) {
 
 export async function createParty(req, res, next) {
   try {
-    const { name, type } = req.body;
+    const { name, type, idType, dlNumber, pincode } = req.body;
     if (!name) {
       return res.status(400).json({ success: false, message: '"name" is required.' });
     }
     if (type && !['CUSTOMER', 'SUPPLIER', 'BOTH'].includes(type)) {
       return res.status(400).json({ success: false, message: 'type must be CUSTOMER, SUPPLIER, or BOTH.' });
+    }
+    if (idType && !['DRUG_LICENSE', 'DOCTOR_REG'].includes(idType)) {
+      return res.status(400).json({ success: false, message: 'idType must be DRUG_LICENSE or DOCTOR_REG.' });
+    }
+    if (!dlNumber) {
+      return res.status(400).json({ success: false, message: idType === 'DOCTOR_REG' ? '"Doctor Registration No." is required.' : '"Drug License No." is required.' });
+    }
+    if (!pincode) {
+      return res.status(400).json({ success: false, message: '"Pincode" is required.' });
     }
     const party = await mastersService.createParty(req.user.companyId, req.body);
     await logAudit({
@@ -40,6 +49,16 @@ export async function createParty(req, res, next) {
 
 export async function updateParty(req, res, next) {
   try {
+    const { idType, dlNumber, pincode } = req.body;
+    if (idType && !['DRUG_LICENSE', 'DOCTOR_REG'].includes(idType)) {
+      return res.status(400).json({ success: false, message: 'idType must be DRUG_LICENSE or DOCTOR_REG.' });
+    }
+    if (dlNumber !== undefined && !dlNumber) {
+      return res.status(400).json({ success: false, message: idType === 'DOCTOR_REG' ? '"Doctor Registration No." is required.' : '"Drug License No." is required.' });
+    }
+    if (pincode !== undefined && !pincode) {
+      return res.status(400).json({ success: false, message: '"Pincode" is required.' });
+    }
     const party = await mastersService.updateParty(req.user.companyId, req.params.id, req.body);
     await logAudit({
       companyId: req.user.companyId, userId: req.user.id, action: 'PARTY_UPDATE',
