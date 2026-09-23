@@ -106,6 +106,17 @@ export const tallyApi = {
     gstr3b: (params) => apiClient.get('/reports/gst/gstr3b', { params }).then(r => r.data)
   },
 
+  // ── GST Return JSON Export (GSTR-1 / IFF offline upload) ──
+  gst: {
+    meta: () => apiClient.get('/gst/export/meta').then(r => r.data),
+    prepare: (data) => apiClient.post('/gst/export/prepare', data).then(r => r.data),
+    generate: (data) => apiClient.post('/gst/export/generate', data).then(r => r.data),
+    history: (params) => apiClient.get('/gst/export/history', { params }).then(r => r.data),
+    historyItem: (id) => apiClient.get(`/gst/export/history/${id}`).then(r => r.data),
+    downloadFile: (id, partNo) => apiClient.get(`/gst/export/history/${id}/files/${partNo}`, { responseType: 'blob' }).then(r => r.data),
+    downloadErrors: (id) => apiClient.get(`/gst/export/history/${id}/errors.csv`, { responseType: 'blob' }).then(r => r.data)
+  },
+
   // ── Utilities ─────────────────────────────────────────────
   utilities: {
     company: {

@@ -8,6 +8,7 @@
     "dev": "nodemon apps/api.js",
     "start": "node apps/api.js",
     "start:api": "node apps/api.js",
+    "test": "node --test \"test/**/*.test.js\"",
     "start:api:dev": "nodemon apps/api.js",
     "start:worker": "node apps/worker.js",
     "start:scheduler": "node apps/scheduler.js",
@@ -20,6 +21,7 @@
   },
   "dependencies": {
     "@prisma/client": "^5.14.0",
+    "ajv": "^8.20.0",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.8.3",
     "cors": "^2.8.5",

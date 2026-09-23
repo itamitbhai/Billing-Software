@@ -76,6 +76,13 @@ export default function GatewayPage() {
       ]
     },
     {
+      title: 'GST Returns',
+      items: [
+        { name: 'GST Return Export', desc: 'Prepare, validate and download the GSTR-1 / IFF JSON for the GST portal', href: '/gst/export' },
+        { name: 'Export History', desc: 'Previously generated GST JSON files and error reports', href: '/gst/history' }
+      ]
+    },
+    {
       title: 'Utilities & Configuration',
       items: [
         { name: 'System Utilities', desc: 'Audit trails, financial year setup, data backup', href: '/utilities' }

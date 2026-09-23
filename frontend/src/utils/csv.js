@@ -16,7 +16,11 @@ export function toCsv(rows, columns) {
 
 /** Triggers a browser download of the given CSV string. */
 export function downloadCsv(filename, csvString) {
-  const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+  downloadBlob(filename, new Blob([csvString], { type: 'text/csv;charset=utf-8;' }));
+}
+
+/** Triggers a browser download of a Blob (e.g. a file fetched with responseType: 'blob'). */
+export function downloadBlob(filename, blob) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

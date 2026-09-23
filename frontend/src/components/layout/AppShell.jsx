@@ -19,7 +19,8 @@ import {
   Building2,
   Menu,
   X,
-  FileText
+  FileText,
+  FileJson
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -42,6 +43,7 @@ export default function AppShell({ children }) {
     { name: 'Vouchers (Entries)', href: '/vouchers', icon: Receipt },
     { name: 'Banking Portal', href: '/banking', icon: PiggyBank },
     { name: 'Display Reports', href: '/reports', icon: BarChart3 },
+    { name: 'GST Return Export', href: '/gst/export', icon: FileJson },
     { name: 'System Utilities', href: '/utilities', icon: Settings },
   ];
 

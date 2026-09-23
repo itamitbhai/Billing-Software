@@ -12,6 +12,7 @@ import { accountsRouter }  from '../src/core/accounts/accounts.module.js';
 import { vouchersRouter }  from '../src/core/vouchers/vouchers.module.js';
 import { reportsRouter }   from '../src/core/reports/reports.module.js';
 import { bankingRouter }   from '../src/core/banking/banking.module.js';
+import { gstRouter }       from '../src/core/gst/gst.module.js';
 // Shared
 import { errorMiddleware } from '../src/shared/middleware/error.middleware.js';
 
@@ -34,7 +35,7 @@ app.get('/api/v1/health', (req, res) => {
     message:   'VS Arogya Meda Billing API is online and healthy.',
     timestamp: new Date().toISOString(),
     modules: [
-      'auth', 'masters', 'billing', 'utilities', 'accounts', 'vouchers', 'reports', 'banking'
+      'auth', 'masters', 'billing', 'utilities', 'accounts', 'vouchers', 'reports', 'banking', 'gst'
     ],
   });
 });
@@ -48,6 +49,7 @@ app.use('/api/v1/accounts',   accountsRouter);    // Chart of Accounts (Groups &
 app.use('/api/v1/vouchers',   vouchersRouter);    // Double Entry Vouchers
 app.use('/api/v1/reports',    reportsRouter);     // Balance Sheet, P&L, Trial Balance, Day Book
 app.use('/api/v1/banking',    bankingRouter);     // Bank Accounts & Reconciliation
+app.use('/api/v1/gst',        gstRouter);         // GST return JSON export (GSTR-1 / IFF)
 
 // ── 404 Handler ───────────────────────────────────────────────────────────────
 app.use((req, res) => {
@@ -68,5 +70,6 @@ app.listen(port, () => {
   console.log(`    ├── Vouchers        → /api/v1/vouchers    (Double Entry)`);
   console.log(`    ├── Reports         → /api/v1/reports     (Balance Sheet, P&L, Trial Balance)`);
   console.log(`    ├── Banking         → /api/v1/banking     (Bank Accounts & Reconciliation)`);
+  console.log(`    ├── GST             → /api/v1/gst         (GSTR-1 / IFF JSON export)`);
   console.log(`    └── Utilities       → /api/v1/utilities   (Company settings, Dashboard stats)\n`);
 });

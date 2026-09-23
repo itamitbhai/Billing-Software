@@ -30,6 +30,7 @@ model Company {
   users              User[]
   vouchers           Voucher[]
   voucherSequences   VoucherSequence[]
+  gstExports         GstExportHistory[]
 }
 
 model User {
@@ -46,6 +47,7 @@ model User {
   auditLogs    AuditLog[]
   payments     Payment[]  @relation("RecordedBy")
   sessions     Session[]
+  gstExports   GstExportHistory[]
   company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([companyId])

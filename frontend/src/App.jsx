@@ -29,6 +29,8 @@ import StockSummaryPage from './pages/reports/StockSummaryPage';
 import DayBookPage from './pages/reports/DayBookPage';
 import MoreReportsPage from './pages/reports/MoreReportsPage';
 import GstReportsPage from './pages/reports/GstReportsPage';
+import GstExportPage from './pages/gst/GstExportPage';
+import GstExportHistoryPage from './pages/gst/GstExportHistoryPage';
 import UtilitiesPage from './pages/utilities/UtilitiesPage';
 
 // Route Guards
@@ -193,6 +195,22 @@ export default function App() {
           <ProtectedRoute>
             <AppShell>
               <GstReportsPage />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+
+        {/* GST Return JSON Export */}
+        <Route path="/gst/export" element={
+          <ProtectedRoute>
+            <AppShell>
+              <GstExportPage />
+            </AppShell>
+          </ProtectedRoute>
+        } />
+        <Route path="/gst/history" element={
+          <ProtectedRoute>
+            <AppShell>
+              <GstExportHistoryPage />
             </AppShell>
           </ProtectedRoute>
         } />

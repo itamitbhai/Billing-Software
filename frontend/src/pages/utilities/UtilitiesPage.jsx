@@ -202,7 +202,13 @@ export default function UtilitiesPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">GSTIN Number</label>
-                    <input type="text" required value={companyForm.gstin} onChange={e => setCompanyForm({ ...companyForm, gstin: e.target.value })} className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white outline-none text-sm" />
+                    <input type="text" required value={companyForm.gstin} onChange={e => setCompanyForm({ ...companyForm, gstin: e.target.value.toUpperCase().trim() })}
+                      pattern="[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]" maxLength={15} placeholder="27AAPFU0939F1ZV"
+                      title="15-character GSTIN, e.g. 27AAPFU0939F1ZV (not the drug licence number)"
+                      className="w-full bg-[#0d1224] border border-gray-800 focus:border-amber-500/50 rounded-lg p-2.5 text-white placeholder-gray-600 outline-none text-sm font-mono" />
+                    {companyForm.gstin && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(companyForm.gstin) && (
+                      <p className="mt-1 text-[11px] text-rose-400">Not a valid GSTIN — it must be 15 characters (state code + PAN + entity + Z + check digit).</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">State (GST Region)</label>
